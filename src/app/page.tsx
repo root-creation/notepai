@@ -22,6 +22,10 @@ export default function Home() {
     start: number;
     end: number;
   } | null>(null);
+  const [quickEditPosition, setQuickEditPosition] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
   const [isLoadingQuickEdit, setIsLoadingQuickEdit] = useState(false);
 
   // Diff preview state
@@ -220,6 +224,63 @@ export default function Home() {
     }
   }, [composerOpen]);
 
+  // Calculate position for quick edit popup based on selection
+  const getSelectionPosition = useCallback(() => {
+    if (!textareaRef.current) return null;
+    
+    const textarea = textareaRef.current;
+    const start = textarea.selectionStart;
+    
+    // Create a temporary element to measure text position
+    const div = document.createElement('div');
+    const style = window.getComputedStyle(textarea);
+    
+    // Copy textarea styles to the div
+    div.style.cssText = `
+      position: absolute;
+      visibility: hidden;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      width: ${textarea.clientWidth}px;
+      font-family: ${style.fontFamily};
+      font-size: ${style.fontSize};
+      line-height: ${style.lineHeight};
+      padding: ${style.padding};
+      border: ${style.border};
+      box-sizing: border-box;
+    `;
+    
+    // Get text before cursor
+    const textBeforeCursor = content.substring(0, start);
+    
+    // Create span to measure position
+    const span = document.createElement('span');
+    span.textContent = textBeforeCursor || '.';
+    div.appendChild(span);
+    
+    const marker = document.createElement('span');
+    marker.textContent = '|';
+    div.appendChild(marker);
+    
+    document.body.appendChild(div);
+    
+    const textareaRect = textarea.getBoundingClientRect();
+    const markerRect = marker.getBoundingClientRect();
+    const divRect = div.getBoundingClientRect();
+    
+    // Calculate position relative to viewport
+    const relativeTop = markerRect.top - divRect.top;
+    const relativeLeft = markerRect.left - divRect.left;
+    
+    const top = textareaRect.top + relativeTop - textarea.scrollTop;
+    const left = textareaRect.left + relativeLeft;
+    
+    document.body.removeChild(div);
+    
+    return { top, left };
+  }, [content]);
+
   // Handle keydown for Tab, Cmd+K, Cmd+I, and diff Accept/Reject
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Tab key handling - only works when cursor is at end
@@ -260,7 +321,11 @@ export default function Home() {
       const start = textareaRef.current?.selectionStart ?? 0;
       const end = textareaRef.current?.selectionEnd ?? 0;
 
+      // Calculate position before setting state
+      const position = getSelectionPosition();
+      
       setQuickEditSelection({ start, end });
+      setQuickEditPosition(position);
       setQuickEditMode(true);
       setGhostText("");
 
@@ -281,12 +346,13 @@ export default function Home() {
         setQuickEditMode(false);
         setQuickEditPrompt("");
         setQuickEditSelection(null);
+        setQuickEditPosition(null);
         textareaRef.current?.focus();
       } else if (ghostText) {
         setGhostText("");
       }
     }
-  }, [ghostText, content, cursorPosition, quickEditMode, showDiffPreview, composerOpen, rejectChanges, isCursorAtEnd, fetchCompletion, isLoadingCompletion]);
+  }, [ghostText, content, cursorPosition, quickEditMode, showDiffPreview, composerOpen, rejectChanges, isCursorAtEnd, fetchCompletion, isLoadingCompletion, getSelectionPosition]);
 
   // Global keyboard handler for diff preview and composer
   useEffect(() => {
@@ -370,12 +436,14 @@ export default function Home() {
         setShowDiffPreview(true);
         setQuickEditMode(false);
         setQuickEditPrompt("");
+        setQuickEditPosition(null);
       }
     } catch (error) {
       console.error("Quick edit error:", error);
       setQuickEditMode(false);
       setQuickEditPrompt("");
       setQuickEditSelection(null);
+      setQuickEditPosition(null);
     } finally {
       setIsLoadingQuickEdit(false);
     }
@@ -411,65 +479,63 @@ export default function Home() {
         </div>
       )}
 
-      {/* Quick Edit Input Modal */}
-      {quickEditMode && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setQuickEditMode(false);
-              setQuickEditPrompt("");
-              setQuickEditSelection(null);
-              textareaRef.current?.focus();
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.preventDefault();
-              setQuickEditMode(false);
-              setQuickEditPrompt("");
-              setQuickEditSelection(null);
-              textareaRef.current?.focus();
-            }
+      {/* Quick Edit Input Popup - positioned above selection */}
+      {quickEditMode && quickEditPosition && (
+        <form
+          onSubmit={handleQuickEditSubmit}
+          className="fixed z-50 bg-white rounded-lg shadow-2xl border border-border p-3 w-[420px]"
+          style={{
+            top: Math.max(8, quickEditPosition.top - 110),
+            left: Math.max(8, Math.min(quickEditPosition.left - 60, window.innerWidth - 440)),
           }}
         >
-          <form
-            onSubmit={handleQuickEditSubmit}
-            className="bg-white rounded-lg shadow-2xl border border-border p-4 w-full max-w-lg mx-4"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <input
-                  ref={quickEditInputRef}
-                  type="text"
-                  value={quickEditPrompt}
-                  onChange={(e) => setQuickEditPrompt(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      setQuickEditMode(false);
-                      setQuickEditPrompt("");
-                      setQuickEditSelection(null);
-                      textareaRef.current?.focus();
-                    }
-                  }}
-                  placeholder={quickEditSelection?.start === quickEditSelection?.end
-                    ? "What do you want to write?"
-                    : "How should I edit this?"}
-                  className="w-full px-3 py-2 text-base bg-secondary/50 border border-border rounded-md outline-none focus:ring-2 focus:ring-primary/30 font-sans"
-                  disabled={isLoadingQuickEdit}
-                  autoFocus
-                />
-              </div>
-              {isLoadingQuickEdit && (
-                <Loader2 className="w-5 h-5 animate-spin text-primary" />
-              )}
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <input
+                ref={quickEditInputRef}
+                type="text"
+                value={quickEditPrompt}
+                onChange={(e) => setQuickEditPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setQuickEditMode(false);
+                    setQuickEditPrompt("");
+                    setQuickEditSelection(null);
+                    setQuickEditPosition(null);
+                    textareaRef.current?.focus();
+                  }
+                }}
+                onBlur={(e) => {
+                  // Close popup when clicking outside, but not if clicking within the form
+                  if (!e.currentTarget.closest('form')?.contains(e.relatedTarget as Node)) {
+                    setTimeout(() => {
+                      if (!quickEditInputRef.current?.matches(':focus')) {
+                        setQuickEditMode(false);
+                        setQuickEditPrompt("");
+                        setQuickEditSelection(null);
+                        setQuickEditPosition(null);
+                        textareaRef.current?.focus();
+                      }
+                    }, 100);
+                  }
+                }}
+                placeholder={quickEditSelection?.start === quickEditSelection?.end
+                  ? "What do you want to write?"
+                  : "How should I edit this?"}
+                className="w-full px-3 py-2 text-sm bg-secondary/50 border border-border rounded-md outline-none focus:ring-2 focus:ring-primary/30 font-sans"
+                disabled={isLoadingQuickEdit}
+                autoFocus
+              />
             </div>
-            <div className="mt-2 text-xs text-muted-foreground font-sans">
-              Press <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs">Enter</kbd> to submit • <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs">Esc</kbd> to cancel
-            </div>
-          </form>
-        </div>
+            {isLoadingQuickEdit && (
+              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+            )}
+          </div>
+          <div className="mt-2 text-xs text-muted-foreground font-sans">
+            <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs">↵</kbd> submit • <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs">Esc</kbd> cancel
+          </div>
+        </form>
       )}
 
       {/* Diff Preview Modal (for Quick Edit) */}
