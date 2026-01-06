@@ -26,12 +26,17 @@ export default function Home() {
     before: string;
     after: string;
   } | null>(null);
-
+  
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const quickEditInputRef = useRef<HTMLInputElement>(null);
   const completionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasAttemptedCompletionRef = useRef(false);
   const requestIdRef = useRef(0);
+
+  // Check if cursor is at the end of content
+  const isCursorAtEnd = useCallback(() => {
+    return cursorPosition >= content.length;
+  }, [cursorPosition, content.length]);
 
   // Fetch autocomplete suggestion (only once per pause)
   const fetchCompletion = useCallback(async (text: string, position: number, requestId: number) => {
@@ -92,15 +97,17 @@ export default function Home() {
       completionTimeoutRef.current = null;
     }
     
-    // Trigger autocomplete after 300ms of inactivity
-    if (newContent.trim().length >= 5) {
+    // Only auto-trigger autocomplete if cursor is at the END of the content
+    const isAtEnd = newPosition >= newContent.length;
+    
+    if (newContent.trim().length >= 5 && isAtEnd) {
       completionTimeoutRef.current = setTimeout(() => {
         fetchCompletion(newContent, newPosition, currentRequestId);
       }, 300);
     }
   }, [fetchCompletion]);
 
-  // Accept the proposed changes
+  // Accept the proposed changes (for quick edit)
   const acceptChanges = useCallback(() => {
     if (!diffContext || !proposedText) return;
     
@@ -125,7 +132,7 @@ export default function Home() {
     }, 0);
   }, [diffContext, proposedText]);
 
-  // Reject the proposed changes
+  // Reject the proposed changes (for quick edit)
   const rejectChanges = useCallback(() => {
     setShowDiffPreview(false);
     setOriginalText("");
@@ -140,22 +147,35 @@ export default function Home() {
 
   // Handle keydown for Tab, Cmd+K, and diff Accept/Reject
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Tab to accept ghost text
-    if (e.key === "Tab" && ghostText) {
-      e.preventDefault();
-      const before = content.substring(0, cursorPosition);
-      const after = content.substring(cursorPosition);
-      const newContent = before + ghostText + after;
-      setContent(newContent);
-      setCursorPosition(cursorPosition + ghostText.length);
-      setGhostText("");
+    // Tab key handling - only works when cursor is at end
+    if (e.key === "Tab") {
+      // Only handle Tab if cursor is at end
+      if (!isCursorAtEnd()) return;
       
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.selectionStart = cursorPosition + ghostText.length;
-          textareaRef.current.selectionEnd = cursorPosition + ghostText.length;
-        }
-      }, 0);
+      e.preventDefault();
+      
+      // If ghost text exists, accept it
+      if (ghostText) {
+        const newContent = content + ghostText;
+        setContent(newContent);
+        setCursorPosition(newContent.length);
+        setGhostText("");
+        
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.selectionStart = newContent.length;
+            textareaRef.current.selectionEnd = newContent.length;
+          }
+        }, 0);
+        return;
+      }
+      
+      // If no ghost text, trigger fetch manually
+      if (content.trim().length >= 5 && !isLoadingCompletion) {
+        hasAttemptedCompletionRef.current = false;
+        requestIdRef.current += 1;
+        fetchCompletion(content, cursorPosition, requestIdRef.current);
+      }
       return;
     }
 
@@ -188,22 +208,22 @@ export default function Home() {
         setGhostText("");
       }
     }
-  }, [ghostText, content, cursorPosition, quickEditMode, showDiffPreview, rejectChanges]);
+  }, [ghostText, content, cursorPosition, quickEditMode, showDiffPreview, rejectChanges, isCursorAtEnd, fetchCompletion, isLoadingCompletion]);
 
   // Global keyboard handler for diff preview
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (!showDiffPreview) return;
 
-      // Cmd+Y or Cmd+Enter to accept
-      if ((e.metaKey || e.ctrlKey) && (e.key === "y" || e.key === "Enter")) {
+      // Cmd+Enter to accept
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         e.preventDefault();
         acceptChanges();
         return;
       }
 
-      // Cmd+N or Escape to reject
-      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+      // Cmd+Backspace to reject
+      if ((e.metaKey || e.ctrlKey) && e.key === "Backspace") {
         e.preventDefault();
         rejectChanges();
         return;
@@ -271,6 +291,11 @@ export default function Home() {
     }
   }, []);
 
+  // Auto-focus textarea on page load
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
@@ -331,7 +356,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* Diff Preview Modal */}
+      {/* Diff Preview Modal (for Quick Edit) */}
       {showDiffPreview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
           <div className="bg-white rounded-lg shadow-2xl border border-border w-full max-w-2xl mx-4 overflow-hidden">
@@ -345,7 +370,7 @@ export default function Home() {
                 >
                   <X className="w-4 h-4" />
                   Reject
-                  <kbd className="ml-1 px-1.5 py-0.5 bg-muted rounded text-xs">⌘N</kbd>
+                  <kbd className="ml-1 px-1.5 py-0.5 bg-muted rounded text-xs">⌘⌫</kbd>
                 </button>
                 <button
                   onClick={acceptChanges}
@@ -353,7 +378,7 @@ export default function Home() {
                 >
                   <Check className="w-4 h-4" />
                   Accept
-                  <kbd className="ml-1 px-1.5 py-0.5 bg-green-700 rounded text-xs">⌘Y</kbd>
+                  <kbd className="ml-1 px-1.5 py-0.5 bg-green-700 rounded text-xs">⌘↵</kbd>
                 </button>
               </div>
             </div>
@@ -391,7 +416,7 @@ export default function Home() {
 
             {/* Footer hint */}
             <div className="px-4 py-2 border-t border-border bg-secondary/20 text-xs text-muted-foreground font-sans text-center">
-              <kbd className="px-1.5 py-0.5 bg-muted rounded">⌘Y</kbd> or <kbd className="px-1.5 py-0.5 bg-muted rounded">⌘Enter</kbd> to accept • <kbd className="px-1.5 py-0.5 bg-muted rounded">⌘N</kbd> or <kbd className="px-1.5 py-0.5 bg-muted rounded">Esc</kbd> to reject
+              <kbd className="px-1.5 py-0.5 bg-muted rounded">⌘↵</kbd> to accept • <kbd className="px-1.5 py-0.5 bg-muted rounded">⌘⌫</kbd> or <kbd className="px-1.5 py-0.5 bg-muted rounded">Esc</kbd> to reject
             </div>
           </div>
         </div>
@@ -401,15 +426,17 @@ export default function Home() {
       <main className="w-full max-w-4xl min-h-screen bg-notepad notepad-lines shadow-xl relative">
         {/* Editor container with ghost text overlay */}
         <div className="relative w-full min-h-screen">
-          {/* Ghost text layer */}
-          <div 
-            className="absolute inset-0 p-8 pt-10 pointer-events-none font-[var(--font-handwriting)] text-xl leading-8 whitespace-pre-wrap break-words overflow-hidden"
-            style={{ lineHeight: "32px" }}
-            aria-hidden="true"
-          >
-            <span className="invisible">{content.substring(0, cursorPosition)}</span>
-            <span className="text-muted-foreground/40">{ghostText}</span>
-          </div>
+          {/* Ghost text layer - only show when cursor is at end */}
+          {isCursorAtEnd() && ghostText && (
+            <div 
+              className="absolute inset-0 p-8 pt-10 pointer-events-none font-[var(--font-handwriting)] text-xl leading-8 whitespace-pre-wrap break-words overflow-hidden"
+              style={{ lineHeight: "32px" }}
+              aria-hidden="true"
+            >
+              <span className="invisible">{content}</span>
+              <span className="text-muted-foreground/40">{ghostText}</span>
+            </div>
+          )}
 
           {/* Main textarea */}
           <textarea
@@ -434,7 +461,7 @@ export default function Home() {
         {!showDiffPreview && !quickEditMode && (
           <div className="fixed bottom-4 right-4 text-xs text-muted-foreground/60 font-sans flex flex-col items-end gap-1.5">
             <div className="flex items-center gap-2">
-              <span>accept suggestion</span>
+              <span>autocomplete</span>
               <kbd className="px-1.5 py-0.5 bg-white/70 border border-border/50 rounded shadow-sm">Tab</kbd>
             </div>
             <div className="flex items-center gap-2">
