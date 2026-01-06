@@ -37,7 +37,11 @@ RULES:
 - Never repeat what's already written
 - Be context-aware`,
       prompt: `Continue this text naturally:\n\n${contextText}`,
-      maxTokens: 50,
+      providerOptions: {
+        openai: {
+          maxTokens: 50,
+        },
+      },
       temperature: 0.3,
     });
 

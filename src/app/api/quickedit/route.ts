@@ -71,7 +71,11 @@ Return the edited text (no quotes):`;
       model: openai("gpt-4o-mini"),
       system: systemPrompt,
       prompt,
-      maxTokens: 2000,
+      providerOptions: {
+        openai: {
+          maxTokens: 2000,
+        },
+      },
       temperature: 0.4,
     });
 

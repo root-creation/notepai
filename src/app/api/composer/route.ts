@@ -46,7 +46,11 @@ Guidelines:
       prompt: conversationHistory 
         ? `Previous conversation:\n${conversationHistory}\n\nUser: ${message}\n\nAssistant:`
         : message,
-      maxTokens: 1000,
+      providerOptions: {
+        openai: {
+          maxTokens: 1000,
+        },
+      },
       temperature: 0.7,
     });
 
