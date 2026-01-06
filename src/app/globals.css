@@ -1,26 +1,85 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --color-notepad: var(--notepad);
+  --color-notepad-lines: var(--notepad-lines);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  --radius: 0.5rem;
+  --notepad: #FFF9C4;
+  --notepad-lines: #E8D5A3;
+  --background: #FFF9C4;
+  --foreground: #2D2A1F;
+  --primary: #8B7355;
+  --primary-foreground: #FFF9C4;
+  --secondary: #F5EBB5;
+  --secondary-foreground: #2D2A1F;
+  --muted: #F0E68C;
+  --muted-foreground: #6B6349;
+  --accent: #DDD28B;
+  --accent-foreground: #2D2A1F;
+  --border: #D4C47A;
+  --input: #EDE4A6;
+  --ring: #B8A65E;
+  --popover: #FFF9C4;
+  --popover-foreground: #2D2A1F;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-white text-foreground;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Notepad lined background */
+.notepad-lines {
+  background-image: repeating-linear-gradient(
+    transparent,
+    transparent 31px,
+    var(--notepad-lines) 31px,
+    var(--notepad-lines) 32px
+  );
+  background-position: 0 8px;
+}
+
+/* Hide scrollbar but keep functionality */
+.hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Custom selection color */
+::selection {
+  background-color: #DDD28B;
+  color: #2D2A1F;
 }
