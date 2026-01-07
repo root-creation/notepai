@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { Loader2, Check, X, Send, Sparkles, Plus, Clock, MoreHorizontal, ChevronDown, AtSign, Globe, Image, ArrowUp, Search, Pencil, Trash2, MessageSquare, Bot } from "lucide-react";
+import { Loader2, Check, X, Send, Sparkles, Plus, Clock, MoreHorizontal, ChevronDown, AtSign, Globe, Image, ArrowUp, Search, Pencil, Trash2, MessageSquare, Bot, Github } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -1007,9 +1007,20 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-white flex justify-center py-6">
+      {/* GitHub button */}
+      <a
+        href="https://github.com/onurkanbakirci/notepai"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed top-4 right-4 z-50 p-2 rounded-lg bg-white/80 backdrop-blur-sm border border-gray-200 shadow-sm hover:bg-gray-100 hover:shadow-md transition-all duration-200 group"
+        title="View on GitHub"
+      >
+        <Github className="w-5 h-5 text-gray-700 group-hover:text-gray-900 transition-colors" />
+      </a>
+
       {/* Loading indicator for autocomplete */}
       {isLoadingCompletion && (
-        <div className="fixed top-4 right-4 z-50">
+        <div className="fixed top-4 right-16 z-50">
           <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
         </div>
       )}
