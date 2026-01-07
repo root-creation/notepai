@@ -1,13 +1,80 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
-import { Loader2, Check, X, Send, Sparkles, Plus, Clock, MoreHorizontal, ChevronDown, AtSign, Globe, Image, ArrowUp } from "lucide-react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { Loader2, Check, X, Send, Sparkles, Plus, Clock, MoreHorizontal, ChevronDown, AtSign, Globe, Image, ArrowUp, Search, Pencil, Trash2 } from "lucide-react";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+
+// Types for chat history
+interface ChatSession {
+  id: string;
+  title: string;
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// Generate unique ID
+const generateId = () => `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+// Get chat title from first user message or default
+const getChatTitle = (messages: Array<{ role: "user" | "assistant"; content: string }>) => {
+  const firstUserMessage = messages.find(m => m.role === "user");
+  if (firstUserMessage) {
+    const title = firstUserMessage.content.slice(0, 40);
+    return title.length < firstUserMessage.content.length ? `${title}...` : title;
+  }
+  return "New Chat";
+};
+
+// Format relative time
+const formatRelativeTime = (timestamp: number) => {
+  const now = Date.now();
+  const diff = now - timestamp;
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m`;
+  if (hours < 24) return `${hours}h`;
+  if (days < 7) return `${days}d`;
+  return new Date(timestamp).toLocaleDateString();
+};
+
+// Group chats by date
+const groupChatsByDate = (chats: ChatSession[]) => {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const yesterday = today - 86400000;
+  const lastWeek = today - 7 * 86400000;
+
+  const groups: { [key: string]: ChatSession[] } = {
+    "Today": [],
+    "Yesterday": [],
+    "Last 7 Days": [],
+    "Older": [],
+  };
+
+  chats.forEach(chat => {
+    const chatDate = new Date(chat.updatedAt).setHours(0, 0, 0, 0);
+    if (chatDate >= today) {
+      groups["Today"].push(chat);
+    } else if (chatDate >= yesterday) {
+      groups["Yesterday"].push(chat);
+    } else if (chatDate >= lastWeek) {
+      groups["Last 7 Days"].push(chat);
+    } else {
+      groups["Older"].push(chat);
+    }
+  });
+
+  return groups;
+};
 
 export default function Home() {
   const [content, setContent] = useState("");
@@ -47,13 +114,239 @@ export default function Home() {
   const [isLoadingComposer, setIsLoadingComposer] = useState(false);
   const [composerContext, setComposerContext] = useState<string | null>(null);
 
+  // Chat history state
+  const [chatHistory, setChatHistory] = useState<ChatSession[]>([]);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
+  const [editingChatId, setEditingChatId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const quickEditInputRef = useRef<HTMLInputElement>(null);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
   const composerMessagesRef = useRef<HTMLDivElement>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
+  const historySearchRef = useRef<HTMLInputElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const completionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasAttemptedCompletionRef = useRef(false);
   const requestIdRef = useRef(0);
+
+  // Load chat history from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("notepai_chat_history");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setChatHistory(parsed);
+      } catch (e) {
+        console.error("Failed to parse chat history:", e);
+      }
+    }
+  }, []);
+
+  // Save chat history to localStorage when it changes
+  useEffect(() => {
+    if (chatHistory.length > 0) {
+      localStorage.setItem("notepai_chat_history", JSON.stringify(chatHistory));
+    }
+  }, [chatHistory]);
+
+  // Save current chat when messages change
+  useEffect(() => {
+    if (composerMessages.length > 0) {
+      const now = Date.now();
+      
+      if (currentChatId) {
+        // Update existing chat
+        setChatHistory(prev => prev.map(chat => 
+          chat.id === currentChatId 
+            ? { ...chat, messages: composerMessages, title: getChatTitle(composerMessages), updatedAt: now }
+            : chat
+        ));
+      } else {
+        // Create new chat
+        const newChat: ChatSession = {
+          id: generateId(),
+          title: getChatTitle(composerMessages),
+          messages: composerMessages,
+          createdAt: now,
+          updatedAt: now,
+        };
+        setChatHistory(prev => [newChat, ...prev]);
+        setCurrentChatId(newChat.id);
+      }
+    }
+  }, [composerMessages, currentChatId]);
+
+  // Filter and group chats
+  const filteredChats = useMemo(() => {
+    let chats = chatHistory;
+    if (historySearch.trim()) {
+      const search = historySearch.toLowerCase();
+      chats = chats.filter(chat => 
+        chat.title.toLowerCase().includes(search) ||
+        chat.messages.some(m => m.content.toLowerCase().includes(search))
+      );
+    }
+    return chats.sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [chatHistory, historySearch]);
+
+  const groupedChats = useMemo(() => groupChatsByDate(filteredChats), [filteredChats]);
+
+  // Close history dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (historyRef.current && !historyRef.current.contains(e.target as Node)) {
+        setHistoryOpen(false);
+        setEditingChatId(null);
+      }
+    };
+    if (historyOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [historyOpen]);
+
+  // Close menu dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    if (menuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [menuOpen]);
+
+  // Focus search when history opens
+  useEffect(() => {
+    if (historyOpen) {
+      setTimeout(() => historySearchRef.current?.focus(), 50);
+    } else {
+      setHistorySearch("");
+    }
+  }, [historyOpen]);
+
+  // Focus edit input when editing
+  useEffect(() => {
+    if (editingChatId) {
+      setTimeout(() => editInputRef.current?.focus(), 50);
+    }
+  }, [editingChatId]);
+
+  // Create new chat
+  const handleNewChat = useCallback(() => {
+    setComposerMessages([]);
+    setCurrentChatId(null);
+    setComposerInput("");
+    setHistoryOpen(false);
+    setTimeout(() => composerInputRef.current?.focus(), 100);
+  }, []);
+
+  // Load a chat from history
+  const handleLoadChat = useCallback((chat: ChatSession) => {
+    setComposerMessages(chat.messages);
+    setCurrentChatId(chat.id);
+    setHistoryOpen(false);
+    setTimeout(() => composerInputRef.current?.focus(), 100);
+  }, []);
+
+  // Delete a chat
+  const handleDeleteChat = useCallback((chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setChatHistory(prev => prev.filter(c => c.id !== chatId));
+    if (currentChatId === chatId) {
+      setComposerMessages([]);
+      setCurrentChatId(null);
+    }
+  }, [currentChatId]);
+
+  // Start editing a chat title
+  const handleStartEdit = useCallback((chat: ChatSession, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingChatId(chat.id);
+    setEditingTitle(chat.title);
+  }, []);
+
+  // Save edited title
+  const handleSaveTitle = useCallback(() => {
+    if (editingChatId && editingTitle.trim()) {
+      setChatHistory(prev => prev.map(chat =>
+        chat.id === editingChatId
+          ? { ...chat, title: editingTitle.trim() }
+          : chat
+      ));
+    }
+    setEditingChatId(null);
+    setEditingTitle("");
+  }, [editingChatId, editingTitle]);
+
+  // Get current chat title for display
+  const currentChatTitle = useMemo(() => {
+    if (currentChatId) {
+      const chat = chatHistory.find(c => c.id === currentChatId);
+      return chat?.title || "New Chat";
+    }
+    return "New Chat";
+  }, [currentChatId, chatHistory]);
+
+  // Close current chat
+  const handleCloseChat = useCallback(() => {
+    setComposerOpen(false);
+    setMenuOpen(false);
+  }, []);
+
+  // Clear all chats from history
+  const handleClearAllChats = useCallback(() => {
+    setChatHistory([]);
+    setComposerMessages([]);
+    setCurrentChatId(null);
+    localStorage.removeItem("notepai_chat_history");
+    setMenuOpen(false);
+  }, []);
+
+  // Close other chats (keep only current)
+  const handleCloseOtherChats = useCallback(() => {
+    if (currentChatId) {
+      setChatHistory(prev => prev.filter(c => c.id === currentChatId));
+    }
+    setMenuOpen(false);
+  }, [currentChatId]);
+
+  // Export transcript
+  const handleExportTranscript = useCallback(() => {
+    if (composerMessages.length === 0) {
+      setMenuOpen(false);
+      return;
+    }
+    
+    const transcript = composerMessages
+      .map(m => `${m.role === "user" ? "You" : "Assistant"}: ${m.content}`)
+      .join("\n\n");
+    
+    const blob = new Blob([transcript], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `chat-${currentChatTitle.slice(0, 20)}-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setMenuOpen(false);
+  }, [composerMessages, currentChatTitle]);
+
+  // Copy chat ID
+  const handleCopyRequestId = useCallback(() => {
+    if (currentChatId) {
+      navigator.clipboard.writeText(currentChatId);
+    }
+    setMenuOpen(false);
+  }, [currentChatId]);
 
   // Check if cursor is at the end of content
   const isCursorAtEnd = useCallback(() => {
@@ -609,15 +902,17 @@ export default function Home() {
         setComposerOpen(open);
         if (!open) {
           setComposerContext(null);
+          setHistoryOpen(false);
+          setMenuOpen(false);
         }
       }} modal={false}>
         <SheetContent side="right" className="w-[400px] sm:max-w-[400px] flex flex-col p-0 bg-notepad border-l border-[#D4C47A] shadow-xl" hideOverlay hideCloseButton>
           {/* Header */}
-          <div className="flex items-center justify-between h-[38px] bg-[#E8D5A3] border-b border-[#D4C47A]">
+          <div className="flex items-center justify-between h-[42px] bg-[#E8D5A3] border-b border-[#D4C47A]">
             {/* Tab */}
             <div className="flex items-center h-full">
               <div className="flex items-center gap-2 px-3 h-full bg-notepad border-r border-[#D4C47A]">
-                <span className="text-[13px] text-[#2D2A1F] font-medium">New Chat</span>
+                <span className="text-[13px] text-[#2D2A1F] font-medium truncate max-w-[140px]">{currentChatTitle}</span>
                 <button 
                   onClick={() => setComposerOpen(false)}
                   className="p-0.5 rounded hover:bg-[#F0E68C] text-[#8B7355] hover:text-[#2D2A1F] transition-colors cursor-pointer"
@@ -626,17 +921,196 @@ export default function Home() {
                 </button>
               </div>
             </div>
-            {/* Right icons */}
-            <div className="flex items-center gap-1 pr-3">
-              <button className="p-1.5 rounded hover:bg-[#F0E68C] text-[#8B7355] hover:text-[#2D2A1F] transition-colors cursor-pointer">
+            {/* Right icons with history dropdown */}
+            <div className="flex items-center gap-0.5 pr-2 relative">
+              <button 
+                onClick={() => {
+                  handleNewChat();
+                  setMenuOpen(false);
+                }}
+                className="p-1.5 rounded hover:bg-[#F0E68C] text-[#8B7355] hover:text-[#2D2A1F] transition-colors cursor-pointer"
+                title="New Chat"
+              >
                 <Plus className="w-4 h-4" />
               </button>
-              <button className="p-1.5 rounded hover:bg-[#F0E68C] text-[#8B7355] hover:text-[#2D2A1F] transition-colors cursor-pointer">
+              <button 
+                onClick={() => {
+                  setHistoryOpen(!historyOpen);
+                  setMenuOpen(false);
+                }}
+                className={`p-1.5 rounded transition-colors cursor-pointer ${historyOpen ? 'bg-[#F0E68C] text-[#2D2A1F]' : 'hover:bg-[#F0E68C] text-[#8B7355] hover:text-[#2D2A1F]'}`}
+                title="History"
+              >
                 <Clock className="w-4 h-4" />
               </button>
-              <button className="p-1.5 rounded hover:bg-[#F0E68C] text-[#8B7355] hover:text-[#2D2A1F] transition-colors cursor-pointer">
+              <button 
+                onClick={() => {
+                  setMenuOpen(!menuOpen);
+                  setHistoryOpen(false);
+                }}
+                className={`p-1.5 rounded transition-colors cursor-pointer ${menuOpen ? 'bg-[#F0E68C] text-[#2D2A1F]' : 'hover:bg-[#F0E68C] text-[#8B7355] hover:text-[#2D2A1F]'}`}
+              >
                 <MoreHorizontal className="w-4 h-4" />
               </button>
+
+              {/* Menu Dropdown */}
+              {menuOpen && (
+                <div 
+                  ref={menuRef}
+                  className="absolute top-full right-0 mt-1 w-[200px] bg-[#FFF9C4] rounded-lg border border-[#D4C47A] shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-150"
+                >
+                  <div className="py-1">
+                    <button
+                      onClick={handleCloseChat}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm text-[#2D2A1F] hover:bg-[#F5EBB5] transition-colors text-left"
+                    >
+                      <span>Close Chat</span>
+                      <kbd className="text-xs text-[#8B7355] bg-[#E8D5A3] px-1.5 py-0.5 rounded">⌘W</kbd>
+                    </button>
+                    <button
+                      onClick={handleClearAllChats}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm text-[#2D2A1F] hover:bg-[#F5EBB5] transition-colors text-left"
+                    >
+                      <span>Clear All Chats</span>
+                    </button>
+                    <button
+                      onClick={handleCloseOtherChats}
+                      disabled={!currentChatId || chatHistory.length <= 1}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm text-[#2D2A1F] hover:bg-[#F5EBB5] transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                    >
+                      <span>Close Other Chats</span>
+                    </button>
+                    
+                    <div className="h-px bg-[#E8D5A3] my-1" />
+                    
+                    <button
+                      onClick={handleExportTranscript}
+                      disabled={composerMessages.length === 0}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm text-[#2D2A1F] hover:bg-[#F5EBB5] transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                    >
+                      <span>Export Transcript</span>
+                    </button>
+                    <button
+                      onClick={handleCopyRequestId}
+                      disabled={!currentChatId}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm text-[#2D2A1F] hover:bg-[#F5EBB5] transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                    >
+                      <span>Copy Request ID</span>
+                    </button>
+                    
+                    <div className="h-px bg-[#E8D5A3] my-1" />
+                    
+                    <button
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm text-[#2D2A1F] hover:bg-[#F5EBB5] transition-colors text-left"
+                    >
+                      <span>Agent Settings</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* History Dropdown */}
+              {historyOpen && (
+                <div 
+                  ref={historyRef}
+                  className="absolute top-full right-0 mt-1 w-[320px] bg-[#FFF9C4] rounded-lg border border-[#D4C47A] shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-150"
+                >
+                  {/* Search */}
+                  <div className="p-2 border-b border-[#E8D5A3]">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#8B7355]" />
+                      <input
+                        ref={historySearchRef}
+                        type="text"
+                        value={historySearch}
+                        onChange={(e) => setHistorySearch(e.target.value)}
+                        placeholder="Search..."
+                        className="w-full pl-8 pr-3 py-1.5 text-sm bg-white text-[#2D2A1F] placeholder:text-[#A89968] rounded-md border border-[#D4C47A] outline-none focus:border-[#8B7355] transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Chat list */}
+                  <div className="max-h-[400px] overflow-auto">
+                    {filteredChats.length === 0 ? (
+                      <div className="p-4 text-center text-sm text-[#8B7355]">
+                        {historySearch ? "No chats found" : "No chat history yet"}
+                      </div>
+                    ) : (
+                      Object.entries(groupedChats).map(([group, chats]) => 
+                        chats.length > 0 && (
+                          <div key={group}>
+                            <div className="px-3 py-1.5 text-xs font-medium text-[#8B7355] bg-[#F5EBB5] sticky top-0">
+                              {group}
+                            </div>
+                            {chats.map((chat) => (
+                              <div
+                                key={chat.id}
+                                onClick={() => handleLoadChat(chat)}
+                                className={`group flex items-center justify-between px-3 py-2 cursor-pointer transition-colors ${
+                                  currentChatId === chat.id 
+                                    ? 'bg-[#F0E68C]' 
+                                    : 'hover:bg-[#F5EBB5]'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  <span className="text-[#8B7355]">💬</span>
+                                  {editingChatId === chat.id ? (
+                                    <input
+                                      ref={editInputRef}
+                                      type="text"
+                                      value={editingTitle}
+                                      onChange={(e) => setEditingTitle(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") handleSaveTitle();
+                                        if (e.key === "Escape") {
+                                          setEditingChatId(null);
+                                          setEditingTitle("");
+                                        }
+                                      }}
+                                      onBlur={handleSaveTitle}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="flex-1 text-sm bg-white text-[#2D2A1F] border border-[#8B7355] rounded px-1.5 py-0.5 outline-none"
+                                    />
+                                  ) : (
+                                    <span className="text-sm text-[#2D2A1F] truncate flex-1">{chat.title}</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {currentChatId === chat.id && !editingChatId && (
+                                    <span className="text-xs text-[#8B7355] mr-1">Current</span>
+                                  )}
+                                  {!editingChatId && (
+                                    <>
+                                      <span className="text-xs text-[#A89968] group-hover:hidden">{formatRelativeTime(chat.updatedAt)}</span>
+                                      <div className="hidden group-hover:flex items-center gap-0.5">
+                                        <button
+                                          onClick={(e) => handleStartEdit(chat, e)}
+                                          className="p-1 rounded hover:bg-[#E8D5A3] text-[#8B7355] hover:text-[#2D2A1F] transition-colors"
+                                          title="Rename"
+                                        >
+                                          <Pencil className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                          onClick={(e) => handleDeleteChat(chat.id, e)}
+                                          className="p-1 rounded hover:bg-[#E8D5A3] text-[#8B7355] hover:text-[#C41E3A] transition-colors"
+                                          title="Delete"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
