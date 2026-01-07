@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { Loader2, Check, X, Send, Sparkles, Plus, Clock, MoreHorizontal, ChevronDown, AtSign, Globe, Image, ArrowUp, Search, Pencil, Trash2 } from "lucide-react";
+import { Loader2, Check, X, Send, Sparkles, Plus, Clock, MoreHorizontal, ChevronDown, AtSign, Globe, Image, ArrowUp, Search, Pencil, Trash2, MessageSquare, Bot } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -113,6 +113,11 @@ export default function Home() {
   }>>([]);
   const [isLoadingComposer, setIsLoadingComposer] = useState(false);
   const [composerContext, setComposerContext] = useState<string | null>(null);
+  const [composerMode, setComposerMode] = useState<"agent" | "plan" | "debug" | "chat">("agent");
+  const [modeDropdownOpen, setModeDropdownOpen] = useState(false);
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState("opus-4.5");
+  const [autoMode, setAutoMode] = useState(false);
 
   // Chat history state
   const [chatHistory, setChatHistory] = useState<ChatSession[]>([]);
@@ -131,6 +136,10 @@ export default function Home() {
   const historySearchRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const modeDropdownRef = useRef<HTMLDivElement>(null);
+  const modeButtonRef = useRef<HTMLButtonElement>(null);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+  const modelButtonRef = useRef<HTMLButtonElement>(null);
   const completionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasAttemptedCompletionRef = useRef(false);
   const requestIdRef = useRef(0);
@@ -223,6 +232,38 @@ export default function Home() {
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [menuOpen]);
+
+  // Close mode dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      const isOutsideDropdown = modeDropdownRef.current && !modeDropdownRef.current.contains(target);
+      const isOutsideButton = modeButtonRef.current && !modeButtonRef.current.contains(target);
+      if (isOutsideDropdown && isOutsideButton) {
+        setModeDropdownOpen(false);
+      }
+    };
+    if (modeDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [modeDropdownOpen]);
+
+  // Close model dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      const isOutsideDropdown = modelDropdownRef.current && !modelDropdownRef.current.contains(target);
+      const isOutsideButton = modelButtonRef.current && !modelButtonRef.current.contains(target);
+      if (isOutsideDropdown && isOutsideButton) {
+        setModelDropdownOpen(false);
+      }
+    };
+    if (modelDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [modelDropdownOpen]);
 
   // Focus search when history opens
   useEffect(() => {
@@ -481,6 +522,7 @@ export default function Home() {
           noteContent: content,
           history: composerMessages,
           selectedContext: contextToSend,
+          mode: composerMode, // Pass the current mode
         }),
       });
 
@@ -489,8 +531,8 @@ export default function Home() {
 
       setComposerMessages(prev => [...prev, { role: "assistant", content: data.response }]);
 
-      // If the AI suggests content changes, apply them
-      if (data.newContent !== undefined && data.newContent !== content) {
+      // Only apply content changes in Agent mode
+      if (composerMode === "agent" && data.newContent !== undefined && data.newContent !== content) {
         setContent(data.newContent);
       }
     } catch (error) {
@@ -764,7 +806,7 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-white flex justify-center">
+    <div className="min-h-screen bg-white flex justify-center py-6">
       {/* Loading indicator for autocomplete */}
       {isLoadingCompletion && (
         <div className="fixed top-4 right-4 z-50">
@@ -1122,22 +1164,47 @@ export default function Home() {
             {composerMessages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full py-8">
                 <div className="w-16 h-16 rounded-2xl bg-[#F5EBB5] flex items-center justify-center mb-4 border border-[#E8D5A3]">
-                  <Sparkles className="w-7 h-7 text-[#8B7355]" />
+                  {composerMode === "agent" ? (
+                    <span className="text-3xl text-[#8B7355] font-bold">∞</span>
+                  ) : (
+                    <MessageSquare className="w-7 h-7 text-[#8B7355]" />
+                  )}
                 </div>
-                <p className="text-[#2D2A1F] text-sm font-medium mb-1">How can I help?</p>
-                <p className="text-[#6B6349] text-xs text-center max-w-[200px]">
-                  Ask questions, brainstorm ideas, or get help with your notes
+                <p className="text-[#2D2A1F] text-sm font-medium mb-1">
+                  {composerMode === "agent" ? "Agent" : "Ask"}
+                </p>
+                <p className="text-[#6B6349] text-xs text-center max-w-[220px]">
+                  {composerMode === "agent" 
+                    ? "I can edit your notes, fix grammar, rewrite content, and more"
+                    : "Ask me anything! I'll answer questions but won't edit your notes"
+                  }
                 </p>
                 <div className="mt-6 grid grid-cols-1 gap-2 w-full max-w-[260px]">
-                  {["Summarize my notes", "Help me brainstorm", "Fix grammar & spelling"].map((suggestion) => (
-                    <button
-                      key={suggestion}
-                      onClick={() => setComposerInput(suggestion)}
-                      className="px-3 py-2 text-xs text-[#6B6349] bg-[#F5EBB5] hover:bg-[#F0E68C] border border-[#E8D5A3] hover:border-[#D4C47A] rounded-lg transition-all text-left cursor-pointer"
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
+                  {composerMode === "agent" ? (
+                    <>
+                      {["Fix grammar & spelling", "Summarize my notes", "Make it more concise"].map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          onClick={() => setComposerInput(suggestion)}
+                          className="px-3 py-2 text-xs text-[#6B6349] bg-[#F5EBB5] hover:bg-[#F0E68C] border border-[#E8D5A3] hover:border-[#D4C47A] rounded-lg transition-all text-left cursor-pointer"
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </>
+                  ) : (
+                    <>
+                      {["What is this note about?", "Help me brainstorm ideas", "Explain this concept"].map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          onClick={() => setComposerInput(suggestion)}
+                          className="px-3 py-2 text-xs text-[#6B6349] bg-[#F5EBB5] hover:bg-[#F0E68C] border border-[#E8D5A3] hover:border-[#D4C47A] rounded-lg transition-all text-left cursor-pointer"
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -1180,7 +1247,7 @@ export default function Home() {
           </div>
 
           {/* Input Area at Bottom */}
-          <div className="p-3 border-t border-[#E8D5A3] bg-[#F5EBB5]">
+          <div className="p-3 border-t border-[#E8D5A3] bg-[#F5EBB5] relative">
             {/* Context Chip */}
             {composerContext && (
               <div className="mb-3 flex flex-wrap gap-2">
@@ -1205,7 +1272,7 @@ export default function Home() {
             )}
             
             {/* Input container with border */}
-            <div className="bg-white rounded-xl border border-[#D4C47A] overflow-hidden shadow-sm focus-within:border-[#8B7355] focus-within:ring-1 focus-within:ring-[#8B7355]/20 transition-all">
+            <div className="bg-white rounded-xl border border-[#D4C47A] shadow-sm focus-within:border-[#8B7355] focus-within:ring-1 focus-within:ring-[#8B7355]/20 transition-all">
               {/* Textarea */}
               <textarea
                 ref={composerInputRef}
@@ -1224,36 +1291,151 @@ export default function Home() {
               />
               
               {/* Bottom toolbar row */}
-              <div className="flex items-center justify-between px-2 py-1.5 border-t border-[#E8D5A3]/50">
+              <div className="flex items-center justify-between px-2 py-1 border-t border-[#E8D5A3]/50">
                 {/* Left side controls */}
-                <div className="flex items-center gap-1">
-                  {/* Agent button with dropdown */}
-                  <button className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-[#2D2A1F] bg-[#F5EBB5] hover:bg-[#F0E68C] rounded-full transition-colors cursor-pointer">
-                    <span className="text-[#8B7355] font-semibold">∞</span>
-                    <span>Agent</span>
-                    <ChevronDown className="w-3 h-3 text-[#8B7355]" />
-                  </button>
+                <div className="flex items-center gap-1.5 relative">
+                  {/* Mode selector dropdown button with dropdown */}
+                  <div className="relative">
+                    <button 
+                      ref={modeButtonRef}
+                      onClick={() => setModeDropdownOpen(!modeDropdownOpen)}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-[#5C4D3C] bg-[#E8DDB5] hover:bg-[#DDD0A0] rounded-md transition-colors cursor-pointer border border-[#D4C47A]/50"
+                    >
+                      <span className="text-[#8B7355] font-semibold text-sm">
+                        {composerMode === "agent" ? "∞" : composerMode === "plan" ? "☰" : composerMode === "debug" ? "⚙" : "💬"}
+                      </span>
+                      <span>{composerMode === "agent" ? "Agent" : composerMode === "plan" ? "Plan" : composerMode === "debug" ? "Debug" : "Ask"}</span>
+                      <ChevronDown className="w-3 h-3 text-[#8B7355]" />
+                    </button>
+                    
+                    {/* Mode dropdown - positioned above button */}
+                    {modeDropdownOpen && (
+                      <div 
+                        ref={modeDropdownRef}
+                        className="absolute bottom-full left-0 mb-1 w-[180px] bg-white rounded-lg shadow-xl border border-[#E8D5A3] overflow-visible z-50 animate-in fade-in slide-in-from-bottom-2 duration-150"
+                      >
+                        <div className="py-0.5">
+                          {[
+                            { id: "agent", icon: "∞", name: "Agent", shortcut: "⌃⌥⌘I", canEdit: true, desc: "Autonomous AI that can edit your notes, fix grammar, and make changes" },
+                            { id: "plan", icon: "☰", name: "Plan", canEdit: true, desc: "Create detailed plans for accomplishing tasks" },
+                            { id: "debug", icon: "⚙", name: "Debug", canEdit: false, desc: "Analyze and fix issues in your content" },
+                            { id: "chat", icon: null, name: "Ask", canEdit: false, desc: "Ask questions without modifying your notes" },
+                          ].map((mode) => (
+                            <div key={mode.id} className="relative group">
+                              <button
+                                onClick={() => {
+                                  setComposerMode(mode.id as "agent" | "plan" | "debug" | "chat");
+                                  setModeDropdownOpen(false);
+                                }}
+                                className="w-full flex items-center justify-between px-2.5 py-1 text-left transition-colors hover:bg-[#F5EBB5] cursor-pointer"
+                              >
+                                <div className="flex items-center gap-1">
+                                  {mode.icon ? (
+                                    <span className="text-[#6B6349] text-[11px] w-3 text-center">{mode.icon}</span>
+                                  ) : (
+                                    <MessageSquare className="w-3 h-3 text-[#6B6349]" />
+                                  )}
+                                  <span className="text-xs text-[#2D2A1F]">{mode.name}</span>
+                                  {mode.shortcut && <span className="text-[9px] text-[#A89968]">{mode.shortcut}</span>}
+                                </div>
+                                <div className="flex items-center gap-0.5">
+                                  {mode.canEdit && composerMode === mode.id && <Pencil className="w-2.5 h-2.5 text-[#8B7355]" />}
+                                  {composerMode === mode.id && <Check className="w-3 h-3 text-[#8B7355]" />}
+                                </div>
+                              </button>
+                              {/* Hover tooltip - left side */}
+                              <div className="absolute right-full top-0 mr-2 w-[180px] p-2.5 bg-white rounded-lg shadow-xl border border-[#E8D5A3] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 pointer-events-none">
+                                <p className="text-[11px] text-[#6B6349] leading-relaxed">{mode.desc}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   
-                  {/* Model selector dropdown */}
-                  <button className="inline-flex items-center gap-1 px-2 py-1 text-xs text-[#6B6349] hover:text-[#2D2A1F] hover:bg-[#F5EBB5] rounded-md transition-colors cursor-pointer">
-                    <span>Opus 4.5</span>
-                    <ChevronDown className="w-3 h-3" />
-                  </button>
+                  {/* Model selector */}
+                  <div className="relative">
+                    <button 
+                      ref={modelButtonRef}
+                      onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
+                      className="inline-flex items-center gap-0.5 px-1.5 text-xs text-[#8B7355] hover:text-[#5C4D3C] transition-colors cursor-pointer leading-none"
+                    >
+                      <span className="translate-y-[-1px]">{autoMode ? "Auto" : selectedModel === "opus-4.5" ? "Opus 4.5" : selectedModel === "sonnet-4.5" ? "Sonnet 4.5" : selectedModel === "gpt-5.2" ? "GPT-5.2" : selectedModel === "gemini-3-flash" ? "Gemini 3 Flash" : "Opus 4.5"}</span>
+                      <ChevronDown className="w-3 h-3" />
+                    </button>
+                    
+                    {/* Model dropdown */}
+                    {modelDropdownOpen && (
+                      <div 
+                        ref={modelDropdownRef}
+                        className="absolute bottom-full left-0 mb-1 w-[180px] bg-white rounded-lg shadow-xl border border-[#E8D5A3] overflow-visible z-50 animate-in fade-in slide-in-from-bottom-2 duration-150"
+                      >
+                        {/* Auto toggle with description */}
+                        <div className="relative group">
+                          <div className="px-2.5 py-1 flex items-center justify-between border-b border-[#E8D5A3]/50">
+                            <span className="text-xs text-[#2D2A1F]">Auto</span>
+                            <button
+                              onClick={() => setAutoMode(!autoMode)}
+                              className={`w-8 h-4 rounded-full transition-colors cursor-pointer ${autoMode ? 'bg-[#8B7355]' : 'bg-[#D4C47A]/50'}`}
+                            >
+                              <div className={`w-3 h-3 rounded-full bg-white shadow-sm transition-transform ${autoMode ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                            </button>
+                          </div>
+                          {/* Hover tooltip for Auto */}
+                          <div className="absolute right-full top-0 mr-2 w-[160px] p-2.5 bg-white rounded-lg shadow-xl border border-[#E8D5A3] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 pointer-events-none">
+                            <p className="text-[11px] text-[#6B6349] leading-relaxed">Balanced quality and speed, recommended for most tasks</p>
+                          </div>
+                        </div>
+                        
+                        {/* Model options - hidden when Auto is enabled */}
+                        {!autoMode && (
+                          <div className="py-0.5">
+                            {[
+                              { id: "opus-4.5", name: "Opus 4.5", desc: "Most capable model for complex reasoning and writing tasks" },
+                              { id: "sonnet-4.5", name: "Sonnet 4.5", desc: "Balanced performance for everyday tasks" },
+                              { id: "gpt-5.2", name: "GPT-5.2", desc: "OpenAI's latest and most advanced model" },
+                              { id: "gemini-3-flash", name: "Gemini 3 Flash", desc: "Fast responses with good quality" },
+                            ].map((model) => (
+                              <div key={model.id} className="relative group">
+                                <button
+                                  onClick={() => {
+                                    setSelectedModel(model.id);
+                                    setModelDropdownOpen(false);
+                                  }}
+                                  className="w-full flex items-center justify-between px-2.5 py-1 text-left transition-colors hover:bg-[#F5EBB5] cursor-pointer"
+                                >
+                                  <span className="text-xs text-[#2D2A1F]">{model.name}</span>
+                                  {selectedModel === model.id && (
+                                    <Check className="w-3.5 h-3.5 text-[#8B7355]" />
+                                  )}
+                                </button>
+                                {/* Hover tooltip - left side */}
+                                <div className="absolute right-full top-0 mr-2 w-[160px] p-2.5 bg-white rounded-lg shadow-xl border border-[#E8D5A3] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 pointer-events-none">
+                                  <p className="text-[11px] text-[#6B6349] leading-relaxed">{model.desc}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   
                   {/* Speed indicator */}
-                  <span className="px-1.5 py-0.5 text-xs text-[#8B7355]">1x</span>
+                  <span className="text-xs text-[#A89968]">1x</span>
                 </div>
                 
                 {/* Right side icons */}
-                <div className="flex items-center gap-0.5">
-                  <button className="p-1.5 text-[#8B7355] hover:text-[#2D2A1F] hover:bg-[#F5EBB5] rounded-md transition-colors cursor-pointer">
-                    <AtSign className="w-4 h-4" />
+                <div className="flex items-center gap-0">
+                  <button className="p-1 text-[#8B7355] hover:text-[#2D2A1F] hover:bg-[#F5EBB5] rounded transition-colors cursor-pointer">
+                    <AtSign className="w-3.5 h-3.5" />
                   </button>
-                  <button className="p-1.5 text-[#8B7355] hover:text-[#2D2A1F] hover:bg-[#F5EBB5] rounded-md transition-colors cursor-pointer">
-                    <Globe className="w-4 h-4" />
+                  <button className="p-1 text-[#8B7355] hover:text-[#2D2A1F] hover:bg-[#F5EBB5] rounded transition-colors cursor-pointer">
+                    <Globe className="w-3.5 h-3.5" />
                   </button>
-                  <button className="p-1.5 text-[#8B7355] hover:text-[#2D2A1F] hover:bg-[#F5EBB5] rounded-md transition-colors cursor-pointer">
-                    <Image className="w-4 h-4" />
+                  <button className="p-1 text-[#8B7355] hover:text-[#2D2A1F] hover:bg-[#F5EBB5] rounded transition-colors cursor-pointer">
+                    <Image className="w-3.5 h-3.5" />
                   </button>
                   
                   {/* Send button - circular */}
@@ -1261,9 +1443,9 @@ export default function Home() {
                     type="button"
                     onClick={handleComposerSubmit}
                     disabled={isLoadingComposer || !composerInput.trim()}
-                    className="ml-1 p-1.5 rounded-full bg-[#8B7355] hover:bg-[#7A6448] text-[#FFF9C4] disabled:opacity-30 disabled:hover:bg-[#8B7355] transition-all cursor-pointer shadow-sm disabled:shadow-none"
+                    className="ml-1 p-1 rounded-full bg-[#8B7355] hover:bg-[#7A6448] text-[#FFF9C4] disabled:opacity-30 disabled:hover:bg-[#8B7355] transition-all cursor-pointer shadow-sm disabled:shadow-none"
                   >
-                    <ArrowUp className="w-4 h-4" />
+                    <ArrowUp className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
