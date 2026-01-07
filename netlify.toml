@@ -5,3 +5,10 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+# Extend function timeout (max 26s on paid, 10s on free)
+[functions]
+  external_node_modules = ["@ai-sdk/openai", "ai"]
+
+[functions."api/*"]
+  included_files = ["node_modules/**"]
+

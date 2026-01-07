@@ -2,6 +2,9 @@ import { openai } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { NextResponse } from "next/server";
 
+// Use Edge runtime for faster cold starts and no timeout limits
+export const runtime = "edge";
+
 export async function POST(request: Request) {
   try {
     const { message, noteContent, history, selectedContext, mode = "agent" } = await request.json();
