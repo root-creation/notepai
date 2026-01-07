@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Loader2, Check, X, Send, Sparkles } from "lucide-react";
+import { Loader2, Check, X, Send, Sparkles, Plus, Clock, MoreHorizontal } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -125,7 +125,7 @@ export default function Home() {
     if (newContent.trim().length >= 5 && isAtEnd) {
       completionTimeoutRef.current = setTimeout(() => {
         fetchCompletion(newContent, newPosition, currentRequestId);
-      }, 300);
+      }, 150);
     }
   }, [fetchCompletion]);
 
@@ -611,32 +611,126 @@ export default function Home() {
           setComposerContext(null);
         }
       }} modal={false}>
-        <SheetContent side="right" className="w-[420px] sm:max-w-[420px] flex flex-col p-0 bg-[#FDF8E8] border-l border-[#E8DFC0]" hideOverlay hideCloseButton>
-          {/* Input Area at Top */}
-          <div className="p-4">
-            <div className="border border-[#DDD4B5] rounded-lg bg-white overflow-hidden shadow-sm">
-              {/* Context Chip - shown above textarea */}
-              {composerContext && (
-                <div className="px-3 pt-3 flex flex-wrap gap-2">
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-[#2D2A26] rounded-md">
-                    <svg className="w-3.5 h-3.5 text-[#C4A969]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                      <polyline points="14 2 14 8 20 8" />
-                      <line x1="16" y1="13" x2="8" y2="13" />
-                      <line x1="16" y1="17" x2="8" y2="17" />
-                    </svg>
-                    <span className="text-xs text-[#E8E0D0] font-medium font-sans">
-                      Selection ({composerContext.split('\n').length} {composerContext.split('\n').length === 1 ? 'line' : 'lines'})
-                    </span>
-                    <button 
-                      onClick={() => setComposerContext(null)}
-                      className="ml-0.5 text-[#8B8378] hover:text-[#E8E0D0] transition-colors cursor-pointer"
+        <SheetContent side="right" className="w-[400px] sm:max-w-[400px] flex flex-col p-0 bg-notepad border-l border-[#D4C47A] shadow-xl" hideOverlay hideCloseButton>
+          {/* Header */}
+          <div className="flex items-center justify-between h-[38px] bg-[#E8D5A3] border-b border-[#D4C47A]">
+            {/* Tab */}
+            <div className="flex items-center h-full">
+              <div className="flex items-center gap-2 px-3 h-full bg-notepad border-r border-[#D4C47A]">
+                <span className="text-[13px] text-[#2D2A1F] font-medium">New Chat</span>
+                <button 
+                  onClick={() => setComposerOpen(false)}
+                  className="p-0.5 rounded hover:bg-[#F0E68C] text-[#8B7355] hover:text-[#2D2A1F] transition-colors cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+            {/* Right icons */}
+            <div className="flex items-center gap-1 pr-3">
+              <button className="p-1.5 rounded hover:bg-[#F0E68C] text-[#8B7355] hover:text-[#2D2A1F] transition-colors cursor-pointer">
+                <Plus className="w-4 h-4" />
+              </button>
+              <button className="p-1.5 rounded hover:bg-[#F0E68C] text-[#8B7355] hover:text-[#2D2A1F] transition-colors cursor-pointer">
+                <Clock className="w-4 h-4" />
+              </button>
+              <button className="p-1.5 rounded hover:bg-[#F0E68C] text-[#8B7355] hover:text-[#2D2A1F] transition-colors cursor-pointer">
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Messages Area */}
+          <div
+            ref={composerMessagesRef}
+            className="flex-1 overflow-auto px-4 py-4 space-y-3 hide-scrollbar"
+          >
+            {composerMessages.length === 0 && (
+              <div className="flex flex-col items-center justify-center h-full py-8">
+                <div className="w-16 h-16 rounded-2xl bg-[#F5EBB5] flex items-center justify-center mb-4 border border-[#E8D5A3]">
+                  <Sparkles className="w-7 h-7 text-[#8B7355]" />
+                </div>
+                <p className="text-[#2D2A1F] text-sm font-medium mb-1">How can I help?</p>
+                <p className="text-[#6B6349] text-xs text-center max-w-[200px]">
+                  Ask questions, brainstorm ideas, or get help with your notes
+                </p>
+                <div className="mt-6 grid grid-cols-1 gap-2 w-full max-w-[260px]">
+                  {["Summarize my notes", "Help me brainstorm", "Fix grammar & spelling"].map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      onClick={() => setComposerInput(suggestion)}
+                      className="px-3 py-2 text-xs text-[#6B6349] bg-[#F5EBB5] hover:bg-[#F0E68C] border border-[#E8D5A3] hover:border-[#D4C47A] rounded-lg transition-all text-left cursor-pointer"
                     >
-                      <X className="w-3 h-3" />
+                      {suggestion}
                     </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {composerMessages.map((msg, index) => (
+              <div
+                key={index}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} animate-in fade-in slide-in-from-bottom-2 duration-200`}
+                style={{ animationDelay: `${index * 50}ms` }}
+              >
+                {msg.role === "assistant" && (
+                  <div className="w-6 h-6 rounded-md bg-[#8B7355] flex items-center justify-center mr-2 mt-0.5 flex-shrink-0 shadow-sm">
+                    <Sparkles className="w-3 h-3 text-[#FFF9C4]" />
+                  </div>
+                )}
+                <div
+                  className={`max-w-[80%] px-3.5 py-2.5 text-[13px] font-sans leading-relaxed ${
+                    msg.role === "user"
+                      ? "bg-[#8B7355] text-[#FFF9C4] rounded-2xl rounded-br-md shadow-md"
+                      : "bg-[#F5EBB5] text-[#2D2A1F] rounded-2xl rounded-tl-md border border-[#E8D5A3]"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                </div>
+              </div>
+            ))}
+            {isLoadingComposer && (
+              <div className="flex justify-start animate-in fade-in slide-in-from-bottom-2 duration-200">
+                <div className="w-6 h-6 rounded-md bg-[#8B7355] flex items-center justify-center mr-2 mt-0.5 flex-shrink-0 shadow-sm">
+                  <Sparkles className="w-3 h-3 text-[#FFF9C4]" />
+                </div>
+                <div className="bg-[#F5EBB5] text-[#6B6349] px-4 py-3 rounded-2xl rounded-tl-md border border-[#E8D5A3]">
+                  <div className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-[#8B7355] rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-1.5 h-1.5 bg-[#8B7355] rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-1.5 h-1.5 bg-[#8B7355] rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                   </div>
                 </div>
-              )}
+              </div>
+            )}
+          </div>
+
+          {/* Input Area at Bottom */}
+          <div className="p-4 border-t border-[#E8D5A3] bg-[#F5EBB5]">
+            {/* Context Chip */}
+            {composerContext && (
+              <div className="mb-3 flex flex-wrap gap-2">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#8B7355] rounded-lg">
+                  <svg className="w-3.5 h-3.5 text-[#FFF9C4]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                  </svg>
+                  <span className="text-xs text-[#FFF9C4] font-medium">
+                    {composerContext.split('\n').length} {composerContext.split('\n').length === 1 ? 'line' : 'lines'} selected
+                  </span>
+                  <button 
+                    onClick={() => setComposerContext(null)}
+                    className="ml-1 text-[#D4C47A] hover:text-[#FFF9C4] transition-colors cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            <div className="relative">
               <textarea
                 ref={composerInputRef}
                 value={composerInput}
@@ -647,83 +741,37 @@ export default function Home() {
                     handleComposerSubmit();
                   }
                 }}
-                placeholder="Plan, ask questions, or chat..."
-                rows={3}
-                className="w-full px-4 py-3 text-sm bg-transparent text-[#3D3425] placeholder:text-[#A89070] outline-none font-sans resize-none"
+                placeholder="Ask anything..."
+                rows={2}
+                className="w-full px-4 py-3 pr-12 text-sm bg-white text-[#2D2A1F] placeholder:text-[#A89968] outline-none font-sans resize-none rounded-xl border border-[#D4C47A] focus:border-[#8B7355] focus:ring-1 focus:ring-[#8B7355]/20 transition-all shadow-sm"
                 disabled={isLoadingComposer}
               />
-              <div className="px-3 py-2 flex items-center justify-between border-t border-[#EDE5D0]">
-                <div className="flex items-center gap-2">
-                  <button className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#F5ECD3] text-[#6B5845] text-xs font-medium hover:bg-[#EDE5D0] transition-colors">
-                    <Sparkles className="w-3 h-3" />
-                    Agent
-                  </button>
-                  <span className="text-[#A89070] text-xs">GPT-4o</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button 
-                    type="button"
-                    onClick={handleComposerSubmit}
-                    disabled={isLoadingComposer || !composerInput.trim()}
-                    className="p-1.5 rounded hover:bg-[#F5ECD3] text-[#A89070] hover:text-[#6B5845] disabled:opacity-50 transition-colors cursor-pointer"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Messages Area */}
-          <div
-            ref={composerMessagesRef}
-            className="flex-1 overflow-auto px-4 space-y-4"
-          >
-            {composerMessages.length === 0 && (
-              <div className="text-center py-12">
-                <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[#F5ECD3] flex items-center justify-center">
-                  <Sparkles className="w-6 h-6 text-[#A89070]" />
-                </div>
-                <p className="text-[#6B5845] text-sm">Start a conversation</p>
-                <p className="text-[#A89070] text-xs mt-1">Ask anything about your notes</p>
-              </div>
-            )}
-            {composerMessages.map((msg, index) => (
-              <div
-                key={index}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              <button 
+                type="button"
+                onClick={handleComposerSubmit}
+                disabled={isLoadingComposer || !composerInput.trim()}
+                className="absolute right-2 bottom-2 p-2 rounded-lg bg-[#8B7355] hover:bg-[#7A6448] text-[#FFF9C4] disabled:opacity-30 disabled:hover:bg-[#8B7355] transition-all cursor-pointer shadow-md disabled:shadow-none"
               >
-                <div
-                  className={`max-w-[85%] px-3 py-2 rounded-lg text-sm font-sans ${
-                    msg.role === "user"
-                      ? "bg-[#C4A969] text-white"
-                      : "bg-white text-[#3D3425] border border-[#E8DFC0]"
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                </div>
-              </div>
-            ))}
-            {isLoadingComposer && (
-              <div className="flex justify-start">
-                <div className="bg-white text-[#6B5845] px-3 py-2 rounded-lg border border-[#E8DFC0]">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Footer */}
-          <div className="p-4 border-t border-[#E8DFC0]">
-            <div className="text-xs text-[#A89070] text-center">
-              <kbd className="px-1.5 py-0.5 bg-[#F5ECD3] rounded text-[#6B5845]">↵</kbd> to send • <kbd className="px-1.5 py-0.5 bg-[#F5ECD3] rounded text-[#6B5845]">⌘I</kbd> to close
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="mt-3 flex items-center justify-center gap-4 text-[10px] text-[#8B7355]">
+              <span className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 bg-white border border-[#D4C47A] rounded text-[#6B6349] font-mono shadow-sm">↵</kbd>
+                <span>send</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 bg-white border border-[#D4C47A] rounded text-[#6B6349] font-mono shadow-sm">⌘I</kbd>
+                <span>toggle</span>
+              </span>
             </div>
           </div>
         </SheetContent>
       </Sheet>
 
       {/* Centered notepad */}
-      <main className={`w-full max-w-4xl min-h-screen bg-notepad notepad-lines shadow-xl relative transition-all duration-300 ${composerOpen ? "mr-96" : ""}`}>
+      <main className={`w-full max-w-4xl min-h-screen bg-notepad notepad-lines shadow-xl relative transition-all duration-300 ${composerOpen ? "mr-[400px]" : ""}`}>
         {/* Editor container with ghost text overlay */}
         <div className="relative w-full min-h-screen">
           {/* Selection highlight layer - show when quick edit is open with selection */}
@@ -772,7 +820,7 @@ export default function Home() {
 
         {/* Keyboard shortcuts hint */}
         {!showDiffPreview && !quickEditMode && !composerOpen && (
-          <div className="fixed bottom-4 right-4 text-xs text-muted-foreground/60 font-sans flex flex-col items-end gap-1.5">
+          <div className="fixed bottom-10 right-4 text-xs text-muted-foreground/60 font-sans flex flex-col items-end gap-1.5">
             <div className="flex items-center gap-2">
               <span>autocomplete</span>
               <kbd className="px-1.5 py-0.5 bg-white/70 border border-border/50 rounded shadow-sm">Tab</kbd>
@@ -794,6 +842,19 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      {/* Footer */}
+      <footer className="fixed bottom-0 left-0 right-0 py-2 bg-white border-t border-gray-200 text-center text-xs text-gray-500 font-sans z-40">
+        Built by{" "}
+        <a
+          href="https://github.com/onurkanbakirci"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-gray-900 font-medium hover:underline cursor-pointer"
+        >
+          onurkanbakirci
+        </a>
+      </footer>
     </div>
   );
 }
