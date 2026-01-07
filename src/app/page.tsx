@@ -110,6 +110,16 @@ export default function Home() {
   const [composerMessages, setComposerMessages] = useState<Array<{
     role: "user" | "assistant";
     content: string;
+    changes?: {
+      type: "accepted" | "rejected";
+      original: string;
+      proposed: string;
+    };
+    contexts?: Array<{
+      text: string;
+      startLine: number;
+      endLine: number;
+    }>;
   }>>([]);
   const [isLoadingComposer, setIsLoadingComposer] = useState(false);
   const [composerContexts, setComposerContexts] = useState<Array<{
@@ -574,13 +584,34 @@ export default function Home() {
   const acceptPendingChanges = useCallback(() => {
     if (!pendingChanges) return;
     setContent(pendingChanges.proposed);
+    // Add to message history with changes info
+    setComposerMessages(prev => [...prev, { 
+      role: "assistant", 
+      content: `Changes applied`,
+      changes: {
+        type: "accepted",
+        original: pendingChanges.original,
+        proposed: pendingChanges.proposed,
+      }
+    }]);
     setPendingChanges(null);
   }, [pendingChanges]);
 
   // Reject pending composer changes
   const rejectPendingChanges = useCallback(() => {
+    if (!pendingChanges) return;
+    // Add to message history with changes info
+    setComposerMessages(prev => [...prev, { 
+      role: "assistant", 
+      content: `Changes rejected`,
+      changes: {
+        type: "rejected",
+        original: pendingChanges.original,
+        proposed: pendingChanges.proposed,
+      }
+    }]);
     setPendingChanges(null);
-  }, []);
+  }, [pendingChanges]);
 
   // Handle composer submit
   const handleComposerSubmit = async (e?: React.FormEvent) => {
@@ -592,8 +623,14 @@ export default function Home() {
       ? composerContexts.map(ctx => ctx.text).join('\n\n---\n\n') 
       : null;
     
+    // Store contexts for the message before clearing
+    const attachedContexts = composerContexts.length > 0 
+      ? composerContexts.map(ctx => ({ text: ctx.text, startLine: ctx.startLine, endLine: ctx.endLine }))
+      : undefined;
+    
     setComposerInput("");
-    setComposerMessages(prev => [...prev, { role: "user", content: userMessage }]);
+    setComposerContexts([]); // Clear contexts from input
+    setComposerMessages(prev => [...prev, { role: "user", content: userMessage, contexts: attachedContexts }]);
     setIsLoadingComposer(true);
 
     try {
@@ -1404,20 +1441,74 @@ export default function Home() {
                 className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} animate-in fade-in slide-in-from-bottom-2 duration-200`}
                 style={{ animationDelay: `${index * 50}ms` }}
               >
-                {msg.role === "assistant" && (
+                {msg.role === "assistant" && !msg.changes && (
                   <div className="w-6 h-6 rounded-md bg-[#8B7355] flex items-center justify-center mr-2 mt-0.5 flex-shrink-0 shadow-sm">
                     <Sparkles className="w-3 h-3 text-[#FFF9C4]" />
                   </div>
                 )}
-                <div
-                  className={`max-w-[80%] px-3.5 py-2.5 text-[13px] font-sans leading-relaxed ${
-                    msg.role === "user"
-                      ? "bg-[#8B7355] text-[#FFF9C4] rounded-2xl rounded-br-md shadow-md"
-                      : "bg-[#F5EBB5] text-[#2D2A1F] rounded-2xl rounded-tl-md border border-[#E8D5A3]"
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                </div>
+                {/* Regular message */}
+                {!msg.changes && (
+                  <div
+                    className={`max-w-[80%] px-3.5 py-2.5 text-[13px] font-sans leading-relaxed ${
+                      msg.role === "user"
+                        ? "bg-[#8B7355] text-[#FFF9C4] rounded-2xl rounded-br-md shadow-md"
+                        : "bg-[#F5EBB5] text-[#2D2A1F] rounded-2xl rounded-tl-md border border-[#E8D5A3]"
+                    }`}
+                  >
+                    {/* Show attached contexts for user messages */}
+                    {msg.contexts && msg.contexts.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {msg.contexts.map((ctx, ctxIndex) => (
+                          <div 
+                            key={ctxIndex}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-[#6B5A47] rounded text-[11px]"
+                          >
+                            <span className="text-[#D4C47A] font-mono font-semibold">{`{}`}</span>
+                            <span className="text-[#E8D5A3]">
+                              {ctx.text.slice(0, 5).replace(/\n/g, ' ')}{ctx.text.length > 5 ? '...' : ''}
+                            </span>
+                            <span className="text-[#A89968]">
+                              (line {ctx.startLine === ctx.endLine ? ctx.startLine : `${ctx.startLine}-${ctx.endLine}`})
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                  </div>
+                )}
+                {/* Changes message with diff UI */}
+                {msg.changes && (
+                  <div className="w-full bg-[#F5EBB5] rounded-lg border border-[#D4C47A] overflow-hidden">
+                    {/* Collapsible header */}
+                    <details className="group" open>
+                      <summary className="flex items-center gap-2 px-3 py-2 bg-[#E8D5A3] cursor-pointer select-none hover:bg-[#DDD0A0] transition-colors">
+                        <ChevronDown className="w-4 h-4 text-[#8B7355] group-open:rotate-0 -rotate-90 transition-transform" />
+                        <span className="text-xs font-medium text-[#5C4D3C]">1 File</span>
+                        <span className={`ml-auto text-xs font-medium ${msg.changes.type === "accepted" ? "text-[#22863a]" : "text-[#cf222e]"}`}>
+                          {msg.changes.type === "accepted" ? "✓ Applied" : "✗ Rejected"}
+                        </span>
+                      </summary>
+                      {/* Diff content */}
+                      <div className="max-h-[150px] overflow-auto">
+                        {/* Added lines (green) */}
+                        <div className="bg-[#dafbe1]">
+                          <pre className="px-3 py-2 text-xs font-mono text-[#116329] whitespace-pre-wrap overflow-x-auto">
+                            {msg.changes.proposed.split('\n').slice(0, 8).map((line, i) => (
+                              <div key={i} className="flex">
+                                <span className="select-none text-[#116329]/60 w-6 shrink-0">+</span>
+                                <span>{line || ' '}</span>
+                              </div>
+                            ))}
+                            {msg.changes.proposed.split('\n').length > 8 && (
+                              <div className="text-[#116329]/60 italic">... {msg.changes.proposed.split('\n').length - 8} more lines</div>
+                            )}
+                          </pre>
+                        </div>
+                      </div>
+                    </details>
+                  </div>
+                )}
               </div>
             ))}
             {isLoadingComposer && (
