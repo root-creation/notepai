@@ -1014,16 +1014,23 @@ export default function Home() {
         </div>
       )}
 
-      {/* Quick Edit Input Popup - positioned above selection */}
-      {quickEditMode && quickEditPosition && (
-        <form
-          onSubmit={handleQuickEditSubmit}
-          className="fixed z-50 bg-white rounded-lg shadow-2xl border border-border p-3 w-[420px]"
-          style={{
-            top: Math.max(8, quickEditPosition.top - 110),
-            left: Math.max(8, Math.min(quickEditPosition.left - 60, window.innerWidth - 440)),
-          }}
-        >
+      {/* Quick Edit Input Popup - positioned above or below selection based on available space */}
+      {quickEditMode && quickEditPosition && (() => {
+        const popupHeight = 90; // Approximate height of the popup
+        const buffer = 20; // Extra space between popup and selection
+        const hasSpaceAbove = quickEditPosition.top > popupHeight + buffer;
+        
+        return (
+          <form
+            onSubmit={handleQuickEditSubmit}
+            className="fixed z-50 bg-white rounded-lg shadow-2xl border border-border p-3 w-[420px]"
+            style={{
+              top: hasSpaceAbove 
+                ? Math.max(8, quickEditPosition.top - popupHeight - buffer)
+                : quickEditPosition.top + 32 + buffer, // 32px is the line height
+              left: Math.max(8, Math.min(quickEditPosition.left - 60, window.innerWidth - 440)),
+            }}
+          >
           <div className="flex items-center gap-3">
             <div className="flex-1">
               <input
@@ -1071,7 +1078,8 @@ export default function Home() {
             <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs">↵</kbd> submit • <kbd className="px-1.5 py-0.5 bg-muted rounded text-xs">Esc</kbd> cancel
           </div>
         </form>
-      )}
+        );
+      })()}
 
       {/* Diff Preview Modal (for Quick Edit) */}
       {showDiffPreview && (
