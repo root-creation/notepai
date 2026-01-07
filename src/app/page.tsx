@@ -112,8 +112,18 @@ export default function Home() {
     content: string;
   }>>([]);
   const [isLoadingComposer, setIsLoadingComposer] = useState(false);
-  const [composerContext, setComposerContext] = useState<string | null>(null);
+  const [composerContexts, setComposerContexts] = useState<Array<{
+    id: string;
+    text: string;
+    startLine: number;
+    endLine: number;
+  }>>([]);
   const [composerMode, setComposerMode] = useState<"agent" | "plan" | "debug" | "chat">("agent");
+  const [allSelected, setAllSelected] = useState(false); // Track if Cmd+A selected all including contexts
+  const [pendingChanges, setPendingChanges] = useState<{
+    original: string;
+    proposed: string;
+  } | null>(null); // Track proposed changes from composer
   const [modeDropdownOpen, setModeDropdownOpen] = useState(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState("opus-4.5");
@@ -122,6 +132,7 @@ export default function Home() {
   // Chat history state
   const [chatHistory, setChatHistory] = useState<ChatSession[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [openTabs, setOpenTabs] = useState<string[]>([]); // Track open tab IDs
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
@@ -185,7 +196,7 @@ export default function Home() {
           createdAt: now,
           updatedAt: now,
         };
-        setChatHistory(prev => [newChat, ...prev]);
+        setChatHistory(prev => [newChat, ...prev].slice(0, 5)); // Keep max 5 chats
         setCurrentChatId(newChat.id);
       }
     }
@@ -283,8 +294,19 @@ export default function Home() {
 
   // Create new chat
   const handleNewChat = useCallback(() => {
+    // Always create a new empty chat session
+    const now = Date.now();
+    const newChat: ChatSession = {
+      id: generateId(),
+      title: "New Chat",
+      messages: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    setChatHistory(prev => [newChat, ...prev].slice(0, 5)); // Keep max 5 chats
+    setCurrentChatId(newChat.id);
+    setOpenTabs(prev => [...prev, newChat.id]); // Add to open tabs
     setComposerMessages([]);
-    setCurrentChatId(null);
     setComposerInput("");
     setHistoryOpen(false);
     setTimeout(() => composerInputRef.current?.focus(), 100);
@@ -294,14 +316,57 @@ export default function Home() {
   const handleLoadChat = useCallback((chat: ChatSession) => {
     setComposerMessages(chat.messages);
     setCurrentChatId(chat.id);
+    // Add to open tabs if not already there
+    setOpenTabs(prev => prev.includes(chat.id) ? prev : [...prev, chat.id]);
     setHistoryOpen(false);
     setTimeout(() => composerInputRef.current?.focus(), 100);
   }, []);
+
+  // Switch to a tab
+  const handleSwitchTab = useCallback((chatId: string) => {
+    const chat = chatHistory.find(c => c.id === chatId);
+    if (chat) {
+      setComposerMessages(chat.messages);
+      setCurrentChatId(chat.id);
+    }
+    setTimeout(() => composerInputRef.current?.focus(), 100);
+  }, [chatHistory]);
+
+  // Close a tab
+  const handleCloseTab = useCallback((chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const tabIndex = openTabs.indexOf(chatId);
+    const newOpenTabs = openTabs.filter(id => id !== chatId);
+    setOpenTabs(newOpenTabs);
+    
+    // If closing the current tab, switch to another tab
+    if (currentChatId === chatId) {
+      if (newOpenTabs.length > 0) {
+        // Switch to the next tab, or previous if closing the last one
+        const nextIndex = Math.min(tabIndex, newOpenTabs.length - 1);
+        const nextChatId = newOpenTabs[nextIndex];
+        const nextChat = chatHistory.find(c => c.id === nextChatId);
+        if (nextChat) {
+          setComposerMessages(nextChat.messages);
+          setCurrentChatId(nextChat.id);
+        }
+      } else {
+        // No tabs left, close composer and clear state
+        setComposerMessages([]);
+        setCurrentChatId(null);
+        setComposerOpen(false);
+        setComposerContexts([]);
+        setHistoryOpen(false);
+        setMenuOpen(false);
+      }
+    }
+  }, [openTabs, currentChatId, chatHistory]);
 
   // Delete a chat
   const handleDeleteChat = useCallback((chatId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setChatHistory(prev => prev.filter(c => c.id !== chatId));
+    setOpenTabs(prev => prev.filter(id => id !== chatId)); // Also remove from open tabs
     if (currentChatId === chatId) {
       setComposerMessages([]);
       setCurrentChatId(null);
@@ -340,12 +405,15 @@ export default function Home() {
   // Close current chat
   const handleCloseChat = useCallback(() => {
     setComposerOpen(false);
+    setComposerContexts([]);
+    setHistoryOpen(false);
     setMenuOpen(false);
   }, []);
 
   // Clear all chats from history
   const handleClearAllChats = useCallback(() => {
     setChatHistory([]);
+    setOpenTabs([]); // Clear all tabs
     setComposerMessages([]);
     setCurrentChatId(null);
     localStorage.removeItem("notepai_chat_history");
@@ -356,6 +424,7 @@ export default function Home() {
   const handleCloseOtherChats = useCallback(() => {
     if (currentChatId) {
       setChatHistory(prev => prev.filter(c => c.id === currentChatId));
+      setOpenTabs([currentChatId]); // Keep only the current tab open
     }
     setMenuOpen(false);
   }, [currentChatId]);
@@ -501,13 +570,27 @@ export default function Home() {
     }, 0);
   }, []);
 
+  // Accept pending composer changes
+  const acceptPendingChanges = useCallback(() => {
+    if (!pendingChanges) return;
+    setContent(pendingChanges.proposed);
+    setPendingChanges(null);
+  }, [pendingChanges]);
+
+  // Reject pending composer changes
+  const rejectPendingChanges = useCallback(() => {
+    setPendingChanges(null);
+  }, []);
+
   // Handle composer submit
   const handleComposerSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!composerInput.trim() || isLoadingComposer) return;
 
     const userMessage = composerInput.trim();
-    const contextToSend = composerContext;
+    const contextToSend = composerContexts.length > 0 
+      ? composerContexts.map(ctx => ctx.text).join('\n\n---\n\n') 
+      : null;
     
     setComposerInput("");
     setComposerMessages(prev => [...prev, { role: "user", content: userMessage }]);
@@ -531,9 +614,12 @@ export default function Home() {
 
       setComposerMessages(prev => [...prev, { role: "assistant", content: data.response }]);
 
-      // Only apply content changes in Agent mode
+      // Only show pending changes in Agent mode (don't auto-apply)
       if (composerMode === "agent" && data.newContent !== undefined && data.newContent !== content) {
-        setContent(data.newContent);
+        setPendingChanges({
+          original: content,
+          proposed: data.newContent,
+        });
       }
     } catch (error) {
       console.error("Composer error:", error);
@@ -550,14 +636,29 @@ export default function Home() {
     }
   }, [composerMessages]);
 
-  // Focus composer input when opened
+  // Focus composer input when opened and ensure at least one tab exists
   useEffect(() => {
     if (composerOpen) {
+      // If no tabs are open, create a new one
+      if (openTabs.length === 0) {
+        const now = Date.now();
+        const newChat: ChatSession = {
+          id: generateId(),
+          title: "New Chat",
+          messages: [],
+          createdAt: now,
+          updatedAt: now,
+        };
+        setChatHistory(prev => [newChat, ...prev].slice(0, 5)); // Keep max 5 chats
+        setCurrentChatId(newChat.id);
+        setOpenTabs([newChat.id]);
+        setComposerMessages([]);
+      }
       setTimeout(() => {
         composerInputRef.current?.focus();
       }, 100);
     }
-  }, [composerOpen]);
+  }, [composerOpen, openTabs.length]);
 
   // Calculate position for quick edit popup based on selection
   const getSelectionPosition = useCallback(() => {
@@ -674,6 +775,9 @@ export default function Home() {
     if (e.key === "Escape") {
       if (composerOpen) {
         setComposerOpen(false);
+        setComposerContexts([]);
+        setHistoryOpen(false);
+        setMenuOpen(false);
         textareaRef.current?.focus();
       } else if (showDiffPreview) {
         rejectChanges();
@@ -692,22 +796,59 @@ export default function Home() {
   // Global keyboard handler for diff preview and composer
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      // Cmd+I to toggle composer from anywhere
+      // Cmd+T to open new tab (only when composer is open)
+      if ((e.metaKey || e.ctrlKey) && e.key === "t" && composerOpen) {
+        e.preventDefault();
+        handleNewChat();
+        return;
+      }
+
+      // Cmd+W to close current tab (only when composer is open)
+      if ((e.metaKey || e.ctrlKey) && e.key === "w" && composerOpen) {
+        e.preventDefault();
+        if (currentChatId && openTabs.length > 0) {
+          // Create a synthetic event for handleCloseTab
+          const syntheticEvent = { stopPropagation: () => {} } as React.MouseEvent;
+          handleCloseTab(currentChatId, syntheticEvent);
+        }
+        return;
+      }
+
+      // Cmd+I to open composer and/or add context (does not close if already open)
       if ((e.metaKey || e.ctrlKey) && e.key === "i") {
         e.preventDefault();
         
-        // Capture selected text as context if textarea is focused
+        // Capture selected text as context if textarea has a selection
         if (textareaRef.current) {
           const start = textareaRef.current.selectionStart;
           const end = textareaRef.current.selectionEnd;
           if (start !== end) {
             const selectedText = content.substring(start, end);
-            setComposerContext(selectedText);
+            // Calculate line numbers
+            const textBeforeStart = content.substring(0, start);
+            const textBeforeEnd = content.substring(0, end);
+            const startLine = (textBeforeStart.match(/\n/g) || []).length + 1;
+            const endLine = (textBeforeEnd.match(/\n/g) || []).length + 1;
+            // Add new context to array
+            setComposerContexts(prev => [...prev, {
+              id: `ctx_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              text: selectedText,
+              startLine,
+              endLine,
+            }]);
           }
         }
         
-        setComposerOpen(prev => !prev);
-        setGhostText("");
+        // Open composer if not already open
+        if (!composerOpen) {
+          setComposerOpen(true);
+          setGhostText("");
+        }
+        
+        // Focus the composer input
+        setTimeout(() => {
+          composerInputRef.current?.focus();
+        }, 100);
         return;
       }
 
@@ -731,11 +872,33 @@ export default function Home() {
           rejectChanges();
         }
       }
+
+      // Handle pending composer changes
+      if (pendingChanges) {
+        // Cmd+Enter to accept
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+          e.preventDefault();
+          acceptPendingChanges();
+          return;
+        }
+
+        // Cmd+Backspace to reject
+        if ((e.metaKey || e.ctrlKey) && e.key === "Backspace") {
+          e.preventDefault();
+          rejectPendingChanges();
+          return;
+        }
+
+        if (e.key === "Escape") {
+          e.preventDefault();
+          rejectPendingChanges();
+        }
+      }
     };
 
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [showDiffPreview, acceptChanges, rejectChanges, content]);
+  }, [showDiffPreview, acceptChanges, rejectChanges, content, composerOpen, handleNewChat, currentChatId, openTabs, handleCloseTab, pendingChanges, acceptPendingChanges, rejectPendingChanges]);
 
   // Handle quick edit submission
   const handleQuickEditSubmit = async (e: React.FormEvent) => {
@@ -940,28 +1103,42 @@ export default function Home() {
       )}
 
       {/* Composer Sheet - slides from right */}
-      <Sheet open={composerOpen} onOpenChange={(open) => {
-        setComposerOpen(open);
-        if (!open) {
-          setComposerContext(null);
-          setHistoryOpen(false);
-          setMenuOpen(false);
-        }
+      <Sheet open={composerOpen} onOpenChange={() => {
+        // Prevent closing on outside clicks - only close via Cmd+I toggle or explicit close actions
       }} modal={false}>
         <SheetContent side="right" className="w-[400px] sm:max-w-[400px] flex flex-col p-0 bg-notepad border-l border-[#D4C47A] shadow-xl" hideOverlay hideCloseButton>
           {/* Header */}
           <div className="flex items-center justify-between h-[42px] bg-[#E8D5A3] border-b border-[#D4C47A]">
-            {/* Tab */}
-            <div className="flex items-center h-full">
-              <div className="flex items-center gap-2 px-3 h-full bg-notepad border-r border-[#D4C47A]">
-                <span className="text-[13px] text-[#2D2A1F] font-medium truncate max-w-[140px]">{currentChatTitle}</span>
-                <button 
-                  onClick={() => setComposerOpen(false)}
-                  className="p-0.5 rounded hover:bg-[#F0E68C] text-[#8B7355] hover:text-[#2D2A1F] transition-colors cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
+            {/* Tabs */}
+            <div className="flex items-center h-full overflow-x-auto hide-scrollbar">
+              {openTabs.map((tabId) => {
+                const chat = chatHistory.find(c => c.id === tabId);
+                const isActive = currentChatId === tabId;
+                const title = chat?.title || "New Chat";
+                return (
+                  <div
+                    key={tabId}
+                    onClick={() => handleSwitchTab(tabId)}
+                    className={`flex items-center gap-2 px-3 h-full border-r border-[#D4C47A] cursor-pointer transition-colors ${
+                      isActive 
+                        ? 'bg-notepad' 
+                        : 'bg-[#E8D5A3] hover:bg-[#F0E68C]'
+                    }`}
+                  >
+                    <span className={`text-[13px] font-medium truncate max-w-[100px] ${
+                      isActive ? 'text-[#2D2A1F]' : 'text-[#6B6349]'
+                    }`}>
+                      {title}
+                    </span>
+                    <button 
+                      onClick={(e) => handleCloseTab(tabId, e)}
+                      className="p-0.5 rounded hover:bg-[#D4C47A] text-[#8B7355] hover:text-[#2D2A1F] transition-colors cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
             {/* Right icons with history dropdown */}
             <div className="flex items-center gap-0.5 pr-2 relative">
@@ -1003,10 +1180,23 @@ export default function Home() {
                 >
                   <div className="py-1">
                     <button
-                      onClick={handleCloseChat}
+                      onClick={handleNewChat}
                       className="w-full flex items-center justify-between px-3 py-2 text-sm text-[#2D2A1F] hover:bg-[#F5EBB5] transition-colors text-left"
                     >
-                      <span>Close Chat</span>
+                      <span>New Tab</span>
+                      <kbd className="text-xs text-[#8B7355] bg-[#E8D5A3] px-1.5 py-0.5 rounded">⌘T</kbd>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        if (currentChatId && openTabs.length > 0) {
+                          handleCloseTab(currentChatId, e);
+                        }
+                        setMenuOpen(false);
+                      }}
+                      disabled={!currentChatId || openTabs.length === 0}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm text-[#2D2A1F] hover:bg-[#F5EBB5] transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                    >
+                      <span>Close Tab</span>
                       <kbd className="text-xs text-[#8B7355] bg-[#E8D5A3] px-1.5 py-0.5 rounded">⌘W</kbd>
                     </button>
                     <button
@@ -1017,10 +1207,10 @@ export default function Home() {
                     </button>
                     <button
                       onClick={handleCloseOtherChats}
-                      disabled={!currentChatId || chatHistory.length <= 1}
+                      disabled={!currentChatId || openTabs.length <= 1}
                       className="w-full flex items-center justify-between px-3 py-2 text-sm text-[#2D2A1F] hover:bg-[#F5EBB5] transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                     >
-                      <span>Close Other Chats</span>
+                      <span>Close Other Tabs</span>
                     </button>
                     
                     <div className="h-px bg-[#E8D5A3] my-1" />
@@ -1231,16 +1421,75 @@ export default function Home() {
               </div>
             ))}
             {isLoadingComposer && (
-              <div className="flex justify-start animate-in fade-in slide-in-from-bottom-2 duration-200">
-                <div className="w-6 h-6 rounded-md bg-[#8B7355] flex items-center justify-center mr-2 mt-0.5 flex-shrink-0 shadow-sm">
-                  <Sparkles className="w-3 h-3 text-[#FFF9C4]" />
-                </div>
-                <div className="bg-[#F5EBB5] text-[#6B6349] px-4 py-3 rounded-2xl rounded-tl-md border border-[#E8D5A3]">
-                  <div className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 bg-[#8B7355] rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <span className="w-1.5 h-1.5 bg-[#8B7355] rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <span className="w-1.5 h-1.5 bg-[#8B7355] rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+              <div className="flex items-center gap-2 px-3 py-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                <div className="w-4 h-4 border-2 border-[#8B7355] border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs text-[#8B7355] font-medium">Thinking...</span>
+              </div>
+            )}
+            
+            {/* Pending Changes Preview */}
+            {pendingChanges && (
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-200 bg-[#F5EBB5] rounded-lg border border-[#D4C47A] overflow-hidden">
+                {/* Header with file count and actions */}
+                <div className="flex items-center justify-between px-3 py-2 bg-[#E8D5A3] border-b border-[#D4C47A]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[#5C4D3C] text-xs font-medium">1 File Changed</span>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={rejectPendingChanges}
+                      className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-[#8B7355] hover:text-[#5C4D3C] hover:bg-[#D4C47A]/50 rounded transition-colors cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      Reject
+                    </button>
+                    <button
+                      onClick={acceptPendingChanges}
+                      className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-[#22863a] hover:bg-[#2ea043] rounded transition-colors cursor-pointer"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      Accept
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Diff Preview */}
+                <div className="max-h-[200px] overflow-auto">
+                  {/* Removed lines */}
+                  {pendingChanges.original && pendingChanges.original !== pendingChanges.proposed && (
+                    <div className="bg-[#ffebe9] border-b border-[#ffcecb]">
+                      <pre className="px-3 py-2 text-xs font-mono text-[#cf222e] whitespace-pre-wrap overflow-x-auto">
+                        {pendingChanges.original.split('\n').slice(0, 10).map((line, i) => (
+                          <div key={i} className="flex">
+                            <span className="select-none text-[#cf222e]/60 w-6 shrink-0">-</span>
+                            <span>{line || ' '}</span>
+                          </div>
+                        ))}
+                        {pendingChanges.original.split('\n').length > 10 && (
+                          <div className="text-[#cf222e]/60 italic">... {pendingChanges.original.split('\n').length - 10} more lines</div>
+                        )}
+                      </pre>
+                    </div>
+                  )}
+                  {/* Added lines */}
+                  <div className="bg-[#dafbe1]">
+                    <pre className="px-3 py-2 text-xs font-mono text-[#116329] whitespace-pre-wrap overflow-x-auto">
+                      {pendingChanges.proposed.split('\n').slice(0, 10).map((line, i) => (
+                        <div key={i} className="flex">
+                          <span className="select-none text-[#116329]/60 w-6 shrink-0">+</span>
+                          <span>{line || ' '}</span>
+                        </div>
+                      ))}
+                      {pendingChanges.proposed.split('\n').length > 10 && (
+                        <div className="text-[#116329]/60 italic">... {pendingChanges.proposed.split('\n').length - 10} more lines</div>
+                      )}
+                    </pre>
+                  </div>
+                </div>
+                
+                {/* Footer hint */}
+                <div className="px-3 py-1.5 bg-[#E8D5A3]/50 border-t border-[#D4C47A] text-[10px] text-[#8B7355]">
+                  <kbd className="px-1 py-0.5 bg-white/50 rounded text-[9px]">⌘↵</kbd> accept • <kbd className="px-1 py-0.5 bg-white/50 rounded text-[9px]">⌘⌫</kbd> reject
                 </div>
               </div>
             )}
@@ -1248,47 +1497,116 @@ export default function Home() {
 
           {/* Input Area at Bottom */}
           <div className="p-3 border-t border-[#E8D5A3] bg-[#F5EBB5] relative">
-            {/* Context Chip */}
-            {composerContext && (
-              <div className="mb-3 flex flex-wrap gap-2">
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#8B7355] rounded-lg">
-                  <svg className="w-3.5 h-3.5 text-[#FFF9C4]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="16" y1="13" x2="8" y2="13" />
-                    <line x1="16" y1="17" x2="8" y2="17" />
-                  </svg>
-                  <span className="text-xs text-[#FFF9C4] font-medium">
-                    {composerContext.split('\n').length} {composerContext.split('\n').length === 1 ? 'line' : 'lines'} selected
-                  </span>
-                  <button 
-                    onClick={() => setComposerContext(null)}
-                    className="ml-1 text-[#D4C47A] hover:text-[#FFF9C4] transition-colors cursor-pointer"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              </div>
-            )}
-            
             {/* Input container with border */}
             <div className="bg-white rounded-xl border border-[#D4C47A] shadow-sm focus-within:border-[#8B7355] focus-within:ring-1 focus-within:ring-[#8B7355]/20 transition-all">
-              {/* Textarea */}
-              <textarea
-                ref={composerInputRef}
-                value={composerInput}
-                onChange={(e) => setComposerInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleComposerSubmit();
-                  }
-                }}
-                placeholder="Ask anything..."
-                rows={2}
-                className="w-full px-3 py-3 text-sm bg-transparent text-[#2D2A1F] placeholder:text-[#A89968] outline-none font-sans resize-none"
-                disabled={isLoadingComposer}
-              />
+              {/* Inline badges and input container */}
+              <div 
+                className="flex flex-wrap items-start gap-1.5 px-2.5 pt-2 pb-2 min-h-[44px] cursor-text"
+                onClick={() => composerInputRef.current?.focus()}
+              >
+                {/* Context Chips - inline */}
+                {composerContexts.map((ctx) => (
+                  <div 
+                    key={ctx.id}
+                    className={`group inline-flex items-center gap-1 px-2 py-0.5 rounded-md border transition-colors cursor-pointer shrink-0 ${
+                      allSelected 
+                        ? 'bg-[#8B7355] border-[#8B7355] ring-2 ring-[#8B7355]/30' 
+                        : 'bg-[#E8DDB5] hover:bg-[#DDD0A0] border-[#D4C47A]/50'
+                    }`}
+                  >
+                    {/* Icon - curly braces style */}
+                    <span className={`text-[10px] font-mono font-semibold ${allSelected ? 'text-[#FFF9C4]' : 'text-[#8B7355]'}`}>{`{}`}</span>
+                    {/* First 5 chars of selected text */}
+                    <span className={`text-xs font-sans font-medium ${allSelected ? 'text-[#FFF9C4]' : 'text-[#5C4D3C]'}`}>
+                      {ctx.text.slice(0, 5).replace(/\n/g, ' ')}{ctx.text.length > 5 ? '...' : ''}
+                    </span>
+                    {/* Line range */}
+                    <span className={`text-xs font-sans ${allSelected ? 'text-[#E8D5A3]' : 'text-[#8B7355]'}`}>
+                      (line {ctx.startLine === ctx.endLine 
+                        ? ctx.startLine 
+                        : `${ctx.startLine}-${ctx.endLine}`})
+                    </span>
+                    {/* Close button - hidden until hover */}
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setComposerContexts(prev => prev.filter(c => c.id !== ctx.id));
+                      }}
+                      className="p-0.5 text-[#8B7355] hover:text-[#5C4D3C] hover:bg-[#D4C47A]/50 rounded transition-all cursor-pointer opacity-0 group-hover:opacity-100"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                
+                {/* Inline input */}
+                <textarea
+                  ref={composerInputRef}
+                  value={composerInput}
+                  onChange={(e) => {
+                    setComposerInput(e.target.value);
+                    setAllSelected(false); // Reset selection state on input change
+                    // Auto-resize textarea
+                    e.target.style.height = 'auto';
+                    e.target.style.height = `${e.target.scrollHeight}px`;
+                  }}
+                  onClick={() => setAllSelected(false)}
+                  onKeyDown={(e) => {
+                    // Cmd+A or Ctrl+A → select all including contexts
+                    if ((e.metaKey || e.ctrlKey) && e.key === "a" && composerContexts.length > 0) {
+                      e.preventDefault();
+                      const target = e.target as HTMLTextAreaElement;
+                      target.select();
+                      setAllSelected(true);
+                      return;
+                    }
+                    
+                    // Backspace or Delete when all is selected → clear everything
+                    if (allSelected && (e.key === "Backspace" || e.key === "Delete")) {
+                      e.preventDefault();
+                      setComposerInput("");
+                      setComposerContexts([]);
+                      setAllSelected(false);
+                      // Reset textarea height
+                      const target = e.target as HTMLTextAreaElement;
+                      target.style.height = '20px';
+                      return;
+                    }
+                    
+                    // Any other key resets allSelected state
+                    if (allSelected && e.key !== "Meta" && e.key !== "Control" && e.key !== "Shift") {
+                      setAllSelected(false);
+                    }
+                    
+                    // Cmd+Enter or Ctrl+Enter → new line
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      const target = e.target as HTMLTextAreaElement;
+                      const start = target.selectionStart;
+                      const end = target.selectionEnd;
+                      const newValue = composerInput.substring(0, start) + "\n" + composerInput.substring(end);
+                      setComposerInput(newValue);
+                      // Set cursor position after the newline and resize
+                      setTimeout(() => {
+                        target.selectionStart = target.selectionEnd = start + 1;
+                        target.style.height = 'auto';
+                        target.style.height = `${target.scrollHeight}px`;
+                      }, 0);
+                      return;
+                    }
+                    // Enter alone → submit
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleComposerSubmit();
+                    }
+                  }}
+                  placeholder={composerContexts.length > 0 ? "" : "Ask anything..."}
+                  rows={1}
+                  className="flex-1 min-w-[100px] text-sm bg-transparent text-[#2D2A1F] placeholder:text-[#A89968] outline-none font-sans resize-none leading-5"
+                  disabled={isLoadingComposer}
+                  style={{ height: '20px', minHeight: '20px', maxHeight: '200px', overflow: 'auto' }}
+                />
+              </div>
               
               {/* Bottom toolbar row */}
               <div className="flex items-center justify-between px-2 py-1 border-t border-[#E8D5A3]/50">
