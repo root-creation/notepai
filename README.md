@@ -1,8 +1,8 @@
-# NotePAI
+# Notepai
 
 A beautiful AI-powered notepad with intelligent autocomplete, inline quick edits, and a powerful composer assistant. Write naturally and let AI enhance your notes.
 
-![NotePAI Composer](public/composer.png)
+![Notepai Composer](public/composer.png)
 
 ## ✨ Features
 
