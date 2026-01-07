@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Loader2, Check, X, Send, Sparkles, Plus, Clock, MoreHorizontal } from "lucide-react";
+import { Loader2, Check, X, Send, Sparkles, Plus, Clock, MoreHorizontal, ChevronDown, AtSign, Globe, Image, ArrowUp } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -706,7 +706,7 @@ export default function Home() {
           </div>
 
           {/* Input Area at Bottom */}
-          <div className="p-4 border-t border-[#E8D5A3] bg-[#F5EBB5]">
+          <div className="p-3 border-t border-[#E8D5A3] bg-[#F5EBB5]">
             {/* Context Chip */}
             {composerContext && (
               <div className="mb-3 flex flex-wrap gap-2">
@@ -730,7 +730,9 @@ export default function Home() {
               </div>
             )}
             
-            <div className="relative">
+            {/* Input container with border */}
+            <div className="bg-white rounded-xl border border-[#D4C47A] overflow-hidden shadow-sm focus-within:border-[#8B7355] focus-within:ring-1 focus-within:ring-[#8B7355]/20 transition-all">
+              {/* Textarea */}
               <textarea
                 ref={composerInputRef}
                 value={composerInput}
@@ -743,29 +745,56 @@ export default function Home() {
                 }}
                 placeholder="Ask anything..."
                 rows={2}
-                className="w-full px-4 py-3 pr-12 text-sm bg-white text-[#2D2A1F] placeholder:text-[#A89968] outline-none font-sans resize-none rounded-xl border border-[#D4C47A] focus:border-[#8B7355] focus:ring-1 focus:ring-[#8B7355]/20 transition-all shadow-sm"
+                className="w-full px-3 py-3 text-sm bg-transparent text-[#2D2A1F] placeholder:text-[#A89968] outline-none font-sans resize-none"
                 disabled={isLoadingComposer}
               />
-              <button 
-                type="button"
-                onClick={handleComposerSubmit}
-                disabled={isLoadingComposer || !composerInput.trim()}
-                className="absolute right-2 bottom-2 p-2 rounded-lg bg-[#8B7355] hover:bg-[#7A6448] text-[#FFF9C4] disabled:opacity-30 disabled:hover:bg-[#8B7355] transition-all cursor-pointer shadow-md disabled:shadow-none"
-              >
-                <Send className="w-4 h-4" />
-              </button>
+              
+              {/* Bottom toolbar row */}
+              <div className="flex items-center justify-between px-2 py-1.5 border-t border-[#E8D5A3]/50">
+                {/* Left side controls */}
+                <div className="flex items-center gap-1">
+                  {/* Agent button with dropdown */}
+                  <button className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-[#2D2A1F] bg-[#F5EBB5] hover:bg-[#F0E68C] rounded-full transition-colors cursor-pointer">
+                    <span className="text-[#8B7355] font-semibold">∞</span>
+                    <span>Agent</span>
+                    <ChevronDown className="w-3 h-3 text-[#8B7355]" />
+                  </button>
+                  
+                  {/* Model selector dropdown */}
+                  <button className="inline-flex items-center gap-1 px-2 py-1 text-xs text-[#6B6349] hover:text-[#2D2A1F] hover:bg-[#F5EBB5] rounded-md transition-colors cursor-pointer">
+                    <span>Opus 4.5</span>
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                  
+                  {/* Speed indicator */}
+                  <span className="px-1.5 py-0.5 text-xs text-[#8B7355]">1x</span>
+                </div>
+                
+                {/* Right side icons */}
+                <div className="flex items-center gap-0.5">
+                  <button className="p-1.5 text-[#8B7355] hover:text-[#2D2A1F] hover:bg-[#F5EBB5] rounded-md transition-colors cursor-pointer">
+                    <AtSign className="w-4 h-4" />
+                  </button>
+                  <button className="p-1.5 text-[#8B7355] hover:text-[#2D2A1F] hover:bg-[#F5EBB5] rounded-md transition-colors cursor-pointer">
+                    <Globe className="w-4 h-4" />
+                  </button>
+                  <button className="p-1.5 text-[#8B7355] hover:text-[#2D2A1F] hover:bg-[#F5EBB5] rounded-md transition-colors cursor-pointer">
+                    <Image className="w-4 h-4" />
+                  </button>
+                  
+                  {/* Send button - circular */}
+                  <button 
+                    type="button"
+                    onClick={handleComposerSubmit}
+                    disabled={isLoadingComposer || !composerInput.trim()}
+                    className="ml-1 p-1.5 rounded-full bg-[#8B7355] hover:bg-[#7A6448] text-[#FFF9C4] disabled:opacity-30 disabled:hover:bg-[#8B7355] transition-all cursor-pointer shadow-sm disabled:shadow-none"
+                  >
+                    <ArrowUp className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
             </div>
             
-            <div className="mt-3 flex items-center justify-center gap-4 text-[10px] text-[#8B7355]">
-              <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 bg-white border border-[#D4C47A] rounded text-[#6B6349] font-mono shadow-sm">↵</kbd>
-                <span>send</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 bg-white border border-[#D4C47A] rounded text-[#6B6349] font-mono shadow-sm">⌘I</kbd>
-                <span>toggle</span>
-              </span>
-            </div>
           </div>
         </SheetContent>
       </Sheet>
