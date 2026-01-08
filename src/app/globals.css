@@ -59,10 +59,12 @@
 }
 
 /* Notepad lined background */
-.notepad-lines {background-image:url('https://picsum.photos/1200/700?random=1'); background-repeat:no-repeat;}
-
+.notepad-lines {
+background-image:url('https://picsum.photos/1200/700?random=1'); background-repeat:no-repeat;
+  );
+  background-position: 0 8px;
 }
-textarea {color:black;}
+
 /* Hide scrollbar but keep functionality */
 .hide-scrollbar {
   scrollbar-width: none;
@@ -71,7 +73,9 @@ textarea {color:black;}
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
-
+textarea {
+  color:black;
+}
 /* Custom selection color */
 ::selection {
   background-color: #DDD28B;
