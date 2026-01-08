@@ -59,16 +59,10 @@
 }
 
 /* Notepad lined background */
-.notepad-lines {
-  background-image: repeating-linear-gradient(
-    transparent,
-    transparent 31px,
-    var(--notepad-lines) 31px,
-    var(--notepad-lines) 32px
-  );
-  background-position: 0 8px;
-}
+.notepad-lines {background-image:url('https://picsum.photos/1200/700?random=1'); background-repeat:no-repeat;}
 
+}
+textarea {color:black;}
 /* Hide scrollbar but keep functionality */
 .hide-scrollbar {
   scrollbar-width: none;
