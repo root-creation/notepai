@@ -1957,17 +1957,6 @@ export default function Home() {
       </main>
 
       {/* Footer */}
-      <footer className="fixed bottom-0 left-0 right-0 py-2 bg-white border-t border-gray-200 text-center text-xs text-gray-500 font-sans z-40">
-        Built by{" "}
-        <a
-          href="https://github.com/onurkanbakirci"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-gray-900 font-medium hover:underline cursor-pointer"
-        >
-          onurkanbakirci
-        </a>
-      </footer>
     </div>
   );
 }
