@@ -60,9 +60,8 @@
 
 /* Notepad lined background */
 .notepad-lines {
-background-image:url('https://picsum.photos/1200/700?random=1'); background-repeat:no-repeat;
-  );
-  background-position: 0 8px;
+  background-image: url('https://picsum.photos/1200/700?random=1');
+  background-repeat: no-repeat;
 }
 
 /* Hide scrollbar but keep functionality */
