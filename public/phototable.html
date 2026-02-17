@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Photo Table</title>
+
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+    background: #e9ecef;
+  }
+
+  #app {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  /* Table image */
+  #table {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 900px;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* Small photos */
+  .photo {
+    position: absolute;
+    width: 120px;
+    height: 90px;
+    object-fit: cover;
+    border-radius: 10px;
+    cursor: grab;
+    box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+    transition: transform .2s ease, width .2s ease, height .2s ease;
+  }
+
+  .photo.dragging {
+    cursor: grabbing;
+    z-index: 10;
+  }
+</style>
+</head>
+
+<body>
+<div id="app">
+  <img id="table" src="table.jpg" alt="Table">
+</div>
+
+<script>
+const app = document.getElementById("app");
+const table = document.getElementById("table");
+
+const PHOTO_COUNT = 5;
+const TABLE_SIZE = 500;
+
+function randomPos() {
+  return {
+    x: Math.random() * (window.innerWidth - 140),
+    y: Math.random() * (window.innerHeight - 100)
+  };
+}
+
+// Create photos
+for (let i = 0; i < PHOTO_COUNT; i++) {
+  const img = document.createElement("img");
+  img.src = `https://picsum.photos/200/150?random=${i+1}`;
+  img.className = "photo";
+
+  const pos = randomPos();
+  img.style.left = pos.x + "px";
+  img.style.top = pos.y + "px";
+
+  makeDraggable(img);
+  makeDoubleClickZoom(img);
+
+  app.appendChild(img);
+}
+
+function makeDraggable(el) {
+  let offsetX = 0, offsetY = 0, isDown = false;
+
+  el.addEventListener("mousedown", e => {
+    isDown = true;
+    el.classList.add("dragging");
+    offsetX = e.clientX - el.offsetLeft;
+    offsetY = e.clientY - el.offsetTop;
+  });
+
+  document.addEventListener("mousemove", e => {
+    if (!isDown) return;
+    el.style.left = (e.clientX - offsetX) + "px";
+    el.style.top = (e.clientY - offsetY) + "px";
+  });
+
+  document.addEventListener("mouseup", () => {
+    isDown = false;
+    el.classList.remove("dragging");
+  });
+}
+
+function makeDoubleClickZoom(el) {
+  let enlarged = false;
+
+  el.addEventListener("dblclick", () => {
+    const rect = table.getBoundingClientRect();
+
+    if (!enlarged) {
+      el.style.width = TABLE_SIZE + "px";
+      el.style.height = (TABLE_SIZE * 0.75) + "px";
+      el.style.left = rect.left + "px";
+      el.style.top = rect.top + "px";
+      el.style.zIndex = 20;
+    } else {
+      el.style.width = "120px";
+      el.style.height = "90px";
+      el.style.zIndex = 1;
+    }
+
+    enlarged = !enlarged;
+  });
+}
+</script>
+</body>
+</html>
