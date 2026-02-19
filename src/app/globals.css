@@ -60,7 +60,7 @@
 
 /* Notepad lined background */
 .notepad-lines {
-  background-image: url('https://root-creation.github.io/planetai.jpg');
+  background-image: url('https://picsum.photos/1200/700?random=1');
   background-repeat: no-repeat;
 }
 
@@ -73,7 +73,7 @@
   display: none;
 }
 textarea {
-  color:white;
+  color:black;
 }
 /* Custom selection color */
 ::selection {
