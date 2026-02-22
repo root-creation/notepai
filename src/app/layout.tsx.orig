@@ -10,8 +10,8 @@ const kalam = Kalam({
 });
 
 export const metadata: Metadata = {
-  title: "aphoto.app",
-  description: "AI-integrated photo",
+  title: "NotePAI",
+  description: "AI-integrated notepad",
 };
 
 export default function RootLayout({
